@@ -3,6 +3,11 @@
 // file license.txt or http://www.opensource.org/licenses/mit-license.php.
 
 #include "headers.h"
+#include "db.h"
+#include "init.h"
+#include "strlcpy.h"
+#include <boost/filesystem/fstream.hpp>
+#include <boost/filesystem/convenience.hpp>
 #ifdef _MSC_VER
 #include <crtdbg.h>
 #endif
@@ -235,7 +240,7 @@ void SetDefaultReceivingAddress(const string& strAddress)
             return;
         if (!mapPubKeys.count(hash160))
             return;
-        CWalletDB().WriteDefaultKey(mapPubKeys[hash160]);
+        CWalletDB(pwalletMain->strWalletFile).WriteDefaultKey(mapPubKeys[hash160]);
         pframeMain->m_textCtrlAddress->SetValue(strAddress);
     }
 }
@@ -285,7 +290,7 @@ CMainFrame::CMainFrame(wxWindow* parent) : CMainFrameBase(parent)
     dResize = 1.22;
     SetSize(dResize * GetSize().GetWidth(), 1.15 * GetSize().GetHeight());
 #endif
-    m_staticTextBalance->SetLabel(FormatMoney(GetBalance()) + "  ");
+    m_staticTextBalance->SetLabel(FormatMoney(pwalletMain->GetBalance()) + "  ");
     m_listCtrl->SetFocus();
     ptaskbaricon = new CMyTaskBarIcon();
 #ifdef __WXMAC_OSX__
@@ -325,7 +330,7 @@ CMainFrame::CMainFrame(wxWindow* parent) : CMainFrameBase(parent)
 
     // Fill your address text box
     vector<unsigned char> vchPubKey;
-    if (CWalletDB("r").ReadDefaultKey(vchPubKey))
+    if (CWalletDB(pwalletMain->strWalletFile,"r").ReadDefaultKey(vchPubKey))
         m_textCtrlAddress->SetValue(PubKeyToAddress(vchPubKey));
 
     // Fill listctrl with wallet transactions
@@ -620,7 +625,7 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
             {
                 int64 nUnmatured = 0;
                 BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                    nUnmatured += txout.GetCredit();
+                    nUnmatured += pwalletMain->GetCredit(txout);
                 if (wtx.IsInMainChain())
                 {
                     strDescription = strprintf(_("Generated (%s matures in %d more blocks)"), FormatMoney(nUnmatured).c_str(), wtx.GetBlocksToMaturity());
@@ -656,19 +661,19 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
                 return false;
             BOOST_FOREACH(const CTxOut& txout, wtx.vout)
             {
-                if (txout.IsMine())
+                if (pwalletMain->IsMine(txout))
                 {
                     vector<unsigned char> vchPubKey;
-                    if (ExtractPubKey(txout.scriptPubKey, true, vchPubKey))
+                    if (ExtractPubKey(txout.scriptPubKey, pwalletMain, vchPubKey))
                     {
-                        CRITICAL_BLOCK(cs_mapAddressBook)
+                        CRITICAL_BLOCK(pwalletMain->cs_mapAddressBook)
                         {
                             //strDescription += _("Received payment to ");
                             //strDescription += _("Received with address ");
                             strDescription += _("Received with: ");
                             string strAddress = PubKeyToAddress(vchPubKey);
-                            map<string, string>::iterator mi = mapAddressBook.find(strAddress);
-                            if (mi != mapAddressBook.end() && !(*mi).second.empty())
+                            map<string, string>::iterator mi = pwalletMain->mapAddressBook.find(strAddress);
+                            if (mi != pwalletMain->mapAddressBook.end() && !(*mi).second.empty())
                             {
                                 string strLabel = (*mi).second;
                                 strDescription += strAddress.substr(0,12) + "... ";
@@ -698,11 +703,11 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
     {
         bool fAllFromMe = true;
         BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-            fAllFromMe = fAllFromMe && txin.IsMine();
+            fAllFromMe = fAllFromMe && pwalletMain->IsMine(txin);
 
         bool fAllToMe = true;
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            fAllToMe = fAllToMe && txout.IsMine();
+            fAllToMe = fAllToMe && pwalletMain->IsMine(txout);
 
         if (fAllFromMe && fAllToMe)
         {
@@ -728,7 +733,7 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
             for (int nOut = 0; nOut < wtx.vout.size(); nOut++)
             {
                 const CTxOut& txout = wtx.vout[nOut];
-                if (txout.IsMine())
+                if (pwalletMain->IsMine(txout))
                     continue;
 
                 string strAddress;
@@ -746,9 +751,9 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
                 }
 
                 string strDescription = _("To: ");
-                CRITICAL_BLOCK(cs_mapAddressBook)
-                    if (mapAddressBook.count(strAddress) && !mapAddressBook[strAddress].empty())
-                        strDescription += mapAddressBook[strAddress] + " ";
+                CRITICAL_BLOCK(pwalletMain->cs_mapAddressBook)
+                    if (pwalletMain->mapAddressBook.count(strAddress) && !pwalletMain->mapAddressBook[strAddress].empty())
+                        strDescription += pwalletMain->mapAddressBook[strAddress] + " ";
                 strDescription += strAddress;
                 if (!mapValue["message"].empty())
                 {
@@ -787,9 +792,9 @@ bool CMainFrame::InsertTransaction(const CWalletTx& wtx, bool fNew, int nIndex)
             //
             bool fAllMine = true;
             BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                fAllMine = fAllMine && txout.IsMine();
+                fAllMine = fAllMine && pwalletMain->IsMine(txout);
             BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-                fAllMine = fAllMine && txin.IsMine();
+                fAllMine = fAllMine && pwalletMain->IsMine(txin);
 
             InsertLine(fNew, nIndex, hash, strSort, colour,
                        strStatus,
@@ -816,16 +821,16 @@ void CMainFrame::OnIdle(wxIdleEvent& event)
         // Collect list of wallet transactions and sort newest first
         bool fEntered = false;
         vector<pair<unsigned int, uint256> > vSorted;
-        TRY_CRITICAL_BLOCK(cs_mapWallet)
+        TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
         {
             printf("RefreshListCtrl starting\n");
             fEntered = true;
             fRefreshListCtrl = false;
-            vWalletUpdated.clear();
+            pwalletMain->vWalletUpdated.clear();
 
             // Do the newest transactions first
-            vSorted.reserve(mapWallet.size());
-            for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+            vSorted.reserve(pwalletMain->mapWallet.size());
+            for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
             {
                 const CWalletTx& wtx = (*it).second;
                 unsigned int nTime = UINT_MAX - wtx.GetTxTime();
@@ -844,12 +849,12 @@ void CMainFrame::OnIdle(wxIdleEvent& event)
             if (fShutdown)
                 return;
             bool fEntered = false;
-            TRY_CRITICAL_BLOCK(cs_mapWallet)
+            TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
             {
                 fEntered = true;
                 uint256& hash = vSorted[i++].second;
-                map<uint256, CWalletTx>::iterator mi = mapWallet.find(hash);
-                if (mi != mapWallet.end())
+                map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(hash);
+                if (mi != pwalletMain->mapWallet.end())
                     InsertTransaction((*mi).second, true);
             }
             if (!fEntered || i == 100 || i % 500 == 0)
@@ -867,10 +872,10 @@ void CMainFrame::OnIdle(wxIdleEvent& event)
         static int64 nLastTime;
         if (GetTime() > nLastTime + 30)
         {
-            TRY_CRITICAL_BLOCK(cs_mapWallet)
+            TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
             {
                 nLastTime = GetTime();
-                for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+                for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
                 {
                     CWalletTx& wtx = (*it).second;
                     if (wtx.nTimeDisplayed && wtx.nTimeDisplayed != wtx.GetTxTime())
@@ -891,7 +896,7 @@ void CMainFrame::RefreshStatusColumn()
     if (nTop == nLastTop && pindexLastBest == pindexBest)
         return;
 
-    TRY_CRITICAL_BLOCK(cs_mapWallet)
+    TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
     {
         int nStart = nTop;
         int nEnd = min(nStart + 100, m_listCtrl->GetItemCount());
@@ -911,8 +916,8 @@ void CMainFrame::RefreshStatusColumn()
         for (int nIndex = nStart; nIndex < min(nEnd, m_listCtrl->GetItemCount()); nIndex++)
         {
             uint256 hash((string)GetItemText(m_listCtrl, nIndex, 1));
-            map<uint256, CWalletTx>::iterator mi = mapWallet.find(hash);
-            if (mi == mapWallet.end())
+            map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(hash);
+            if (mi == pwalletMain->mapWallet.end())
             {
                 printf("CMainFrame::RefreshStatusColumn() : tx not found in mapWallet\n");
                 continue;
@@ -1009,41 +1014,41 @@ void CMainFrame::OnPaintListCtrl(wxPaintEvent& event)
         nLastRepaintTime = GetTimeMillis();
 
         // Update listctrl contents
-        if (!vWalletUpdated.empty())
+        if (!pwalletMain->vWalletUpdated.empty())
         {
-            TRY_CRITICAL_BLOCK(cs_mapWallet)
+            TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
             {
                 string strTop;
                 if (m_listCtrl->GetItemCount())
                     strTop = (string)m_listCtrl->GetItemText(0);
-                BOOST_FOREACH(uint256 hash, vWalletUpdated)
+                BOOST_FOREACH(uint256 hash, pwalletMain->vWalletUpdated)
                 {
-                    map<uint256, CWalletTx>::iterator mi = mapWallet.find(hash);
-                    if (mi != mapWallet.end())
+                    map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(hash);
+                    if (mi != pwalletMain->mapWallet.end())
                         InsertTransaction((*mi).second, false);
                 }
-                vWalletUpdated.clear();
+                pwalletMain->vWalletUpdated.clear();
                 if (m_listCtrl->GetItemCount() && strTop != (string)m_listCtrl->GetItemText(0))
                     m_listCtrl->ScrollList(0, INT_MIN/2);
             }
         }
 
         // Balance total
-        TRY_CRITICAL_BLOCK(cs_mapWallet)
+        TRY_CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
         {
             fPaintedBalance = true;
-            m_staticTextBalance->SetLabel(FormatMoney(GetBalance()) + "  ");
+            m_staticTextBalance->SetLabel(FormatMoney(pwalletMain->GetBalance()) + "  ");
 
             // Count hidden and multi-line transactions
             nTransactionCount = 0;
-            for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+            for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
             {
                 CWalletTx& wtx = (*it).second;
                 nTransactionCount += wtx.nLinesDisplayed;
             }
         }
     }
-    if (!vWalletUpdated.empty() || !fPaintedBalance)
+    if (!pwalletMain->vWalletUpdated.empty() || !fPaintedBalance)
         nNeedRepaint++;
 
     // Update status column of visible items only
@@ -1069,7 +1074,7 @@ void CMainFrame::OnPaintListCtrl(wxPaintEvent& event)
     m_statusBar->SetStatusText(strStatus, 2);
 
     // Update receiving address
-    string strDefaultAddress = PubKeyToAddress(vchDefaultKey);
+    string strDefaultAddress = PubKeyToAddress(pwalletMain->vchDefaultKey);
     if (m_textCtrlAddress->GetValue() != strDefaultAddress)
         m_textCtrlAddress->SetValue(strDefaultAddress);
 }
@@ -1178,10 +1183,10 @@ void CMainFrame::OnButtonNew(wxCommandEvent& event)
     string strName = dialog.GetValue();
 
     // Generate new key
-    string strAddress = PubKeyToAddress(GetKeyFromKeyPool());
+    string strAddress = PubKeyToAddress(pwalletMain->GetKeyFromKeyPool());
 
     // Save
-    SetAddressBookName(strAddress, strName);
+    pwalletMain->SetAddressBookName(strAddress, strName);
     SetDefaultReceivingAddress(strAddress);
 }
 
@@ -1199,10 +1204,10 @@ void CMainFrame::OnListItemActivated(wxListEvent& event)
 {
     uint256 hash((string)GetItemText(m_listCtrl, event.GetIndex(), 1));
     CWalletTx wtx;
-    CRITICAL_BLOCK(cs_mapWallet)
+    CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
     {
-        map<uint256, CWalletTx>::iterator mi = mapWallet.find(hash);
-        if (mi == mapWallet.end())
+        map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(hash);
+        if (mi == pwalletMain->mapWallet.end())
         {
             printf("CMainFrame::OnListItemActivated() : tx not found in mapWallet\n");
             return;
@@ -1230,7 +1235,7 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
 #ifdef __WXMSW__
     SetSize(nScaleX * GetSize().GetWidth(), nScaleY * GetSize().GetHeight());
 #endif
-    CRITICAL_BLOCK(cs_mapAddressBook)
+    CRITICAL_BLOCK(pwalletMain->cs_mapAddressBook)
     {
         string strHTML;
         strHTML.reserve(4000);
@@ -1280,19 +1285,19 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
                 // Credit
                 BOOST_FOREACH(const CTxOut& txout, wtx.vout)
                 {
-                    if (txout.IsMine())
+                    if (pwalletMain->IsMine(txout))
                     {
                         vector<unsigned char> vchPubKey;
-                        if (ExtractPubKey(txout.scriptPubKey, true, vchPubKey))
+                        if (ExtractPubKey(txout.scriptPubKey, pwalletMain, vchPubKey))
                         {
                             string strAddress = PubKeyToAddress(vchPubKey);
-                            if (mapAddressBook.count(strAddress))
+                            if (pwalletMain->mapAddressBook.count(strAddress))
                             {
                                 strHTML += string() + _("<b>From:</b> ") + _("unknown") + "<br>";
                                 strHTML += _("<b>To:</b> ");
                                 strHTML += HtmlEscape(strAddress);
-                                if (!mapAddressBook[strAddress].empty())
-                                    strHTML += _(" (yours, label: ") + mapAddressBook[strAddress] + ")";
+                                if (!pwalletMain->mapAddressBook[strAddress].empty())
+                                    strHTML += _(" (yours, label: ") + pwalletMain->mapAddressBook[strAddress] + ")";
                                 else
                                     strHTML += _(" (yours)");
                                 strHTML += "<br>";
@@ -1314,8 +1319,8 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
             // Online transaction
             strAddress = wtx.mapValue["to"];
             strHTML += _("<b>To:</b> ");
-            if (mapAddressBook.count(strAddress) && !mapAddressBook[strAddress].empty())
-                strHTML += mapAddressBook[strAddress] + " ";
+            if (pwalletMain->mapAddressBook.count(strAddress) && !pwalletMain->mapAddressBook[strAddress].empty())
+                strHTML += pwalletMain->mapAddressBook[strAddress] + " ";
             strHTML += HtmlEscape(strAddress) + "<br>";
         }
 
@@ -1330,7 +1335,7 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
             //
             int64 nUnmatured = 0;
             BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                nUnmatured += txout.GetCredit();
+                nUnmatured += pwalletMain->GetCredit(txout);
             strHTML += _("<b>Credit:</b> ");
             if (wtx.IsInMainChain())
                 strHTML += strprintf(_("(%s matures in %d more blocks)"), FormatMoney(nUnmatured).c_str(), wtx.GetBlocksToMaturity());
@@ -1349,11 +1354,11 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
         {
             bool fAllFromMe = true;
             BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-                fAllFromMe = fAllFromMe && txin.IsMine();
+                fAllFromMe = fAllFromMe && pwalletMain->IsMine(txin);
 
             bool fAllToMe = true;
             BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                fAllToMe = fAllToMe && txout.IsMine();
+                fAllToMe = fAllToMe && pwalletMain->IsMine(txout);
 
             if (fAllFromMe)
             {
@@ -1362,7 +1367,7 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
                 //
                 BOOST_FOREACH(const CTxOut& txout, wtx.vout)
                 {
-                    if (txout.IsMine())
+                    if (pwalletMain->IsMine(txout))
                         continue;
 
                     if (wtx.mapValue["to"].empty())
@@ -1373,8 +1378,8 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
                         {
                             string strAddress = Hash160ToAddress(hash160);
                             strHTML += _("<b>To:</b> ");
-                            if (mapAddressBook.count(strAddress) && !mapAddressBook[strAddress].empty())
-                                strHTML += mapAddressBook[strAddress] + " ";
+                            if (pwalletMain->mapAddressBook.count(strAddress) && !pwalletMain->mapAddressBook[strAddress].empty())
+                                strHTML += pwalletMain->mapAddressBook[strAddress] + " ";
                             strHTML += strAddress;
                             strHTML += "<br>";
                         }
@@ -1402,11 +1407,11 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
                 // Mixed debit transaction
                 //
                 BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-                    if (txin.IsMine())
-                        strHTML += _("<b>Debit:</b> ") + FormatMoney(-txin.GetDebit()) + "<br>";
+                    if (pwalletMain->IsMine(txin))
+                        strHTML += _("<b>Debit:</b> ") + FormatMoney(-pwalletMain->GetDebit(txin)) + "<br>";
                 BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                    if (txout.IsMine())
-                        strHTML += _("<b>Credit:</b> ") + FormatMoney(txout.GetCredit()) + "<br>";
+                    if (pwalletMain->IsMine(txout))
+                        strHTML += _("<b>Credit:</b> ") + FormatMoney(pwalletMain->GetCredit(txout)) + "<br>";
             }
         }
 
@@ -1432,30 +1437,30 @@ CTxDetailsDialog::CTxDetailsDialog(wxWindow* parent, CWalletTx wtx) : CTxDetails
         {
             strHTML += "<hr><br>debug print<br><br>";
             BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-                if (txin.IsMine())
-                    strHTML += "<b>Debit:</b> " + FormatMoney(-txin.GetDebit()) + "<br>";
+                if (pwalletMain->IsMine(txin))
+                    strHTML += "<b>Debit:</b> " + FormatMoney(-pwalletMain->GetDebit(txin)) + "<br>";
             BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-                if (txout.IsMine())
-                    strHTML += "<b>Credit:</b> " + FormatMoney(txout.GetCredit()) + "<br>";
+                if (pwalletMain->IsMine(txout))
+                    strHTML += "<b>Credit:</b> " + FormatMoney(pwalletMain->GetCredit(txout)) + "<br>";
 
             strHTML += "<br><b>Transaction:</b><br>";
             strHTML += HtmlEscape(wtx.ToString(), true);
 
             strHTML += "<br><b>Inputs:</b><br>";
-            CRITICAL_BLOCK(cs_mapWallet)
+            CRITICAL_BLOCK(pwalletMain->cs_mapWallet)
             {
                 BOOST_FOREACH(const CTxIn& txin, wtx.vin)
                 {
                     COutPoint prevout = txin.prevout;
-                    map<uint256, CWalletTx>::iterator mi = mapWallet.find(prevout.hash);
-                    if (mi != mapWallet.end())
+                    map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(prevout.hash);
+                    if (mi != pwalletMain->mapWallet.end())
                     {
                         const CWalletTx& prev = (*mi).second;
                         if (prevout.n < prev.vout.size())
                         {
                             strHTML += HtmlEscape(prev.ToString(), true);
                             strHTML += " &nbsp;&nbsp; " + FormatTxStatus(prev) + ", ";
-                            strHTML = strHTML + "IsMine=" + (prev.vout[prevout.n].IsMine() ? "true" : "false") + "<br>";
+                            strHTML = strHTML + "IsMine=" + (pwalletMain->IsMine(prev.vout[prevout.n]) ? "true" : "false") + "<br>";
                         }
                     }
                 }
@@ -1756,7 +1761,7 @@ void COptionsDialog::OnButtonCancel(wxCommandEvent& event)
 
 void COptionsDialog::OnButtonApply(wxCommandEvent& event)
 {
-    CWalletDB walletdb;
+    CWalletDB walletdb(pwalletMain->strWalletFile);
 
     int64 nPrevTransactionFee = nBaseTransactionFee;
     if (ParseMoney(m_textCtrlBaseTransactionFee->GetValue(), nBaseTransactionFee) && nBaseTransactionFee != nPrevTransactionFee)
@@ -1943,7 +1948,7 @@ void CSendDialog::OnButtonSend(wxCommandEvent& event)
             wxMessageBox(_("Error in amount  "), _("Send Coins"));
             return;
         }
-        if (nValue > GetBalance())
+        if (nValue > pwalletMain->GetBalance())
         {
             wxMessageBox(_("Amount exceeds your balance  "), _("Send Coins"));
             return;
@@ -1955,14 +1960,14 @@ void CSendDialog::OnButtonSend(wxCommandEvent& event)
 
         if (fBitcoinAddress)
         {
-	    CRITICAL_BLOCK(cs_main)
-	    {
+            CRITICAL_BLOCK(cs_main)
+            {
                 // Send to bitcoin address
                 CScript scriptPubKey;
                 scriptPubKey << OP_DUP << OP_HASH160 << hash160 << OP_EQUALVERIFY << OP_CHECKSIG;
 
-                CReserveKey keyReserve;
-                string strError = SendMoney(scriptPubKey, nValue, wtx, keyReserve, true);
+                CReserveKey keyReserve(pwalletMain);
+                string strError = pwalletMain->SendMoney(scriptPubKey, nValue, wtx, keyReserve, true);
                 if (strError == "")
                     wxMessageBox(_("Payment sent  "), _("Sending..."));
                 else if (strError == "ABORTED")
@@ -1973,7 +1978,7 @@ void CSendDialog::OnButtonSend(wxCommandEvent& event)
                     EndModal(false);
                     return;
                 }
-	    }
+            }
         }
         else
         {
@@ -1994,9 +1999,9 @@ void CSendDialog::OnButtonSend(wxCommandEvent& event)
                 return;
         }
 
-        CRITICAL_BLOCK(cs_mapAddressBook)
-            if (!mapAddressBook.count(strAddress))
-                SetAddressBookName(strAddress, "");
+        CRITICAL_BLOCK(pwalletMain->cs_mapAddressBook)
+            if (!pwalletMain->mapAddressBook.count(strAddress))
+                pwalletMain->SetAddressBookName(strAddress, "");
 
         EndModal(true);
     }
@@ -2180,7 +2185,7 @@ void SendingDialogStartTransfer(void* parg)
 void CSendingDialog::StartTransfer()
 {
     // Make sure we have enough money
-    if (nPrice > GetBalance())
+    if (nPrice > pwalletMain->GetBalance())
     {
         Error(_("Insufficient funds"));
         return;
@@ -2251,16 +2256,16 @@ void CSendingDialog::OnReply2(CDataStream& vRecv)
         // Pay
         if (!Status(_("Creating transaction...")))
             return;
-        if (nPrice > GetBalance())
+        if (nPrice > pwalletMain->GetBalance())
         {
             Error(_("Insufficient funds"));
             return;
         }
-        CReserveKey reservekey;
+        CReserveKey reservekey(pwalletMain);
         int64 nFeeRequired;
-        if (!CreateTransaction(scriptPubKey, nPrice, wtx, reservekey, nFeeRequired))
+        if (!pwalletMain->CreateTransaction(scriptPubKey, nPrice, wtx, reservekey, nFeeRequired))
         {
-            if (nPrice + nFeeRequired > GetBalance())
+            if (nPrice + nFeeRequired > pwalletMain->GetBalance())
             {
                 unsigned int nBytes = ::GetSerializeSize(*(CTransaction*)&wtx, SER_NETWORK);
                 int64 nPayFee = nBaseTransactionFee + nPerKBTransactionFee * ((int64)nBytes / 1000);
@@ -2308,7 +2313,7 @@ void CSendingDialog::OnReply2(CDataStream& vRecv)
             return;
 
         // Commit
-        if (!CommitTransaction(wtx, reservekey))
+        if (!pwalletMain->CommitTransaction(wtx, reservekey))
         {
             Error(_("The transaction was rejected.  This might happen if some of the coins in your wallet were already spent, such as if you used a copy of wallet.dat and coins were spent in the copy but not marked as spent here."));
             return;
@@ -2402,11 +2407,11 @@ CAddressBookDialog::CAddressBookDialog(wxWindow* parent, const wxString& strInit
     m_listCtrlReceiving->SetFocus();
 
     // Fill listctrl with address book data
-    CRITICAL_BLOCK(cs_mapKeys)
-    CRITICAL_BLOCK(cs_mapAddressBook)
+    CRITICAL_BLOCK(pwalletMain->cs_mapKeys)
+    CRITICAL_BLOCK(pwalletMain->cs_mapAddressBook)
     {
         string strDefaultReceiving = (string)pframeMain->m_textCtrlAddress->GetValue();
-        BOOST_FOREACH(const PAIRTYPE(string, string)& item, mapAddressBook)
+        BOOST_FOREACH(const PAIRTYPE(string, string)& item, pwalletMain->mapAddressBook)
         {
             string strAddress = item.first;
             string strName = item.second;
@@ -2465,7 +2470,7 @@ void CAddressBookDialog::OnListEndLabelEdit(wxListEvent& event)
     if (event.IsEditCancelled())
         return;
     string strAddress = (string)GetItemText(m_listCtrl, event.GetIndex(), 1);
-    SetAddressBookName(strAddress, string(event.GetText()));
+    pwalletMain->SetAddressBookName(strAddress, string(event.GetText()));
     pframeMain->RefreshListCtrl();
 }
 
@@ -2500,7 +2505,7 @@ void CAddressBookDialog::OnButtonDelete(wxCommandEvent& event)
         if (m_listCtrl->GetItemState(nIndex, wxLIST_STATE_SELECTED))
         {
             string strAddress = (string)GetItemText(m_listCtrl, nIndex, 1);
-            CWalletDB().EraseName(strAddress);
+            CWalletDB(pwalletMain->strWalletFile).EraseName(strAddress);
             m_listCtrl->DeleteItem(nIndex);
         }
     }
@@ -2560,8 +2565,8 @@ void CAddressBookDialog::OnButtonEdit(wxCommandEvent& event)
 
     // Write back
     if (strAddress != strAddressOrg)
-        CWalletDB().EraseName(strAddressOrg);
-    SetAddressBookName(strAddress, strName);
+        CWalletDB(pwalletMain->strWalletFile).EraseName(strAddressOrg);
+    pwalletMain->SetAddressBookName(strAddress, strName);
     m_listCtrl->SetItem(nIndex, 1, strAddress);
     m_listCtrl->SetItemText(nIndex, strName);
     pframeMain->RefreshListCtrl();
@@ -2597,11 +2602,11 @@ void CAddressBookDialog::OnButtonNew(wxCommandEvent& event)
         strName = dialog.GetValue();
 
         // Generate new key
-        strAddress = PubKeyToAddress(GetKeyFromKeyPool());
+        strAddress = PubKeyToAddress(pwalletMain->GetKeyFromKeyPool());
     }
 
     // Add to list and select it
-    SetAddressBookName(strAddress, strName);
+    pwalletMain->SetAddressBookName(strAddress, strName);
     int nIndex = InsertLine(m_listCtrl, strName, strAddress);
     SetSelection(m_listCtrl, nIndex);
     m_listCtrl->SetFocus();

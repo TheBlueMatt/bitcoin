@@ -15,7 +15,6 @@
 #include <vector>
 #include <string>
 
-#include <boost/foreach.hpp>
 #include <boost/thread.hpp>
 #include <boost/interprocess/sync/interprocess_recursive_mutex.hpp>
 #include <boost/date_time/gregorian/gregorian_types.hpp>
@@ -105,6 +104,8 @@ T* alignup(T* p)
 typedef int socklen_t;
 #else
 #define WSAGetLastError()   errno
+#define WSAEINVAL           EINVAL
+#define WSAEALREADY         EALREADY
 #define WSAEWOULDBLOCK      EWOULDBLOCK
 #define WSAEMSGSIZE         EMSGSIZE
 #define WSAEINTR            EINTR
