@@ -54,6 +54,34 @@ typedef unsigned long long  uint64;
 // the pagefile except in rare circumstances where memory is extremely low.
 #define mlock(p, n) VirtualLock((p), (n));
 #define munlock(p, n) VirtualUnlock((p), (n));
+#else
+/* More mlock portability stuff. */
+size_t get_pageszmask() {
+  static size_t pgmask = 0;
+  size_t i;
+  if (pgmask != 0) return pgmask;
+  i = getpagesize();
+  while (i > 0) {
+    pgmask |= i;
+    i = i >> 1;
+  }
+  pgmask = ~pgmask;
+  return pgmask;
+}
+
+/* Because mlock *must* be called on a page boundry on some systems */
+inline int portable_mlock(const void *addr, size_t len) {
+  void * newaddr;
+  newaddr = ((void *)(((size_t)addr) & get_pageszmask()));
+  return mlock(newaddr,len + ((size_t)addr - (size_t)newaddr) );
+}
+/* Because munlock *must* be called on a page boundry on some systems */
+inline int portable_munlock(const void *addr, size_t len) {
+  void * newaddr;
+  newaddr = ((void *)(((size_t)addr) & get_pageszmask()));
+  return munlock(newaddr,len + ((size_t)addr - (size_t)newaddr));
+}
+#define mlock(a,b) portable_mlock(a,b)
 #endif
 
 #ifdef snprintf
