@@ -36,6 +36,20 @@ typedef unsigned long long  uint64;
 // the pagefile except in rare circumstances where memory is extremely low.
 #define mlock(p, n) VirtualLock((p), (n));
 #define munlock(p, n) VirtualUnlock((p), (n));
+#else
+#include <limits.h>
+#include <sys/mman.h>
+/* This comes from limits.h if it's not defined there set a sane default */
+#ifndef PAGESIZE
+#include <unistd.h>
+#define PAGESIZE sysconf(_SC_PAGESIZE)
+#endif
+#define mlock(a,b) \
+  mlock(((void *)(((size_t)(a)) & ((size_t)(((PAGESIZE)<<1)-1)))),\
+  (b) + ((size_t)(a) - (((size_t)(a)) & ((size_t)(((PAGESIZE)<<1)-1)))))
+#define munlock(a,b) \
+  munlock(((void *)(((size_t)(a)) & ((size_t)(((PAGESIZE)<<1)-1)))),\
+  (b) + ((size_t)(a) - (((size_t)(a)) & ((size_t)(((PAGESIZE)<<1)-1)))))
 #endif
 
 class CScript;
