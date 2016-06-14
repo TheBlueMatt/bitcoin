@@ -85,10 +85,15 @@ ReadStatus PartiallyDownloadedBlock::InitData(const CBlockHeaderAndShortTxIDs& c
         while (txn_available[i + index_offset])
             index_offset++;
         shorttxids[cmpctblock.shorttxids[i]] = i + index_offset;
-        // The math for a max bucket size of 10 is rather complicated, but simulation
-        // shows that, for blocks of up to 10k transactions, any individual bucket having
-        // more than 10 entries is highly unlikely.
-        if (shorttxids.bucket_size(shorttxids.bucket(cmpctblock.shorttxids[i])) > 10)
+        // The chance that any bucket has more than 16 elements has a chance
+        // lower than one in a billion for up to 913429 elements in the table.
+        // The number of elements in a fixed bucket is binomially distributed with
+        // p=1/#buckets n=#txn. Since the number of buckets is at least equal to the
+        // number of transactions (max_load_factor=1.0), the worst case is when
+        // X > 16 with X~Binomial(n=913429, p=1/913429). This P(X > 16) equals
+        // 1.09478 * 10^-15. The chance that this happens for any of the 913429 buckets
+        // is at most 913429 times this probability, which is 0.000000001.
+        if (shorttxids.bucket_size(shorttxids.bucket(cmpctblock.shorttxids[i])) > 16)
             return READ_STATUS_FAILED;
     }
     // TODO: in the shortid-collision case, we should instead request both transactions
