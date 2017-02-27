@@ -730,6 +730,40 @@ static UniValue getnodeaddresses(const JSONRPCRequest& request)
     return ret;
 }
 
+UniValue sendmessage(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 3) {
+        throw std::runtime_error(
+            "setnetworkactive peer_id message_command serialized_message\n"
+            "\nSend the given message to a peer.\n"
+            "\nArguments:\n"
+            "1. \"peer_id\"            (numeric, required) The peer's id\n"
+            "2. \"message_command\"    (string, required) The command\n"
+            "3. \"serialized_message\" (string, required) The serialized message (in hex)\n"
+        );
+    }
+
+    if (!g_connman) {
+        throw JSONRPCError(RPC_CLIENT_P2P_DISABLED, "Error: Peer-to-peer functionality missing or disabled");
+    }
+
+    NodeId id = request.params[0].get_int();
+    std::string command = request.params[1].get_str();
+    std::string data = request.params[2].get_str();
+
+    if (!IsHex(data)) throw JSONRPCError(RPC_MISC_ERROR, "data must be hex");
+    if (command.size() > 12) throw JSONRPCError(RPC_MISC_ERROR, "command is invalid");
+
+    CSerializedNetMsg msg;
+    msg.command = command;
+    msg.data = ParseHex(data);
+
+    return g_connman->ForNode(id, [&](CNode* pnode) {
+        g_connman->PushMessage(pnode, std::move(msg));
+        return true;
+    });
+}
+
 // clang-format off
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
@@ -747,6 +781,7 @@ static const CRPCCommand commands[] =
     { "network",            "clearbanned",            &clearbanned,            {} },
     { "network",            "setnetworkactive",       &setnetworkactive,       {"state"} },
     { "network",            "getnodeaddresses",       &getnodeaddresses,       {"count"} },
+    { "network",            "sendmessage",            &sendmessage,            {"peer_id", "message_command", "serialized_message"} },
 };
 // clang-format on
 
