@@ -548,15 +548,17 @@ BOOST_AUTO_TEST_CASE(countbits_tests)
 
 BOOST_AUTO_TEST_CASE(dsha256_64)
 {
-    for (int i = 0; i < 10; ++i) {
-        unsigned char in[64];
-        unsigned char out1[32], out2[32];
-        for (int j = 0; j < 64; ++j) {
+    for (int i = 0; i <= 32; ++i) {
+        unsigned char in[64 * 32];
+        unsigned char out1[32 * 32], out2[32 * 32];
+        for (int j = 0; j < 64 * i; ++j) {
             in[j] = InsecureRandBits(8);
         }
-        CHash256().Write(in, 64).Finalize(out1);
-        DoubleSHA256_64byte(out2, in, 1);
-        BOOST_CHECK(memcmp(out1, out2, 32) == 0);
+        for (int j = 0; j < i; ++j) {
+            CHash256().Write(in + 64 * j, 64).Finalize(out1 + 32 * j);
+        }
+        DoubleSHA256_64byte(out2, in, i);
+        BOOST_CHECK(memcmp(out1, out2, 32 * i) == 0);
     }
 }
 

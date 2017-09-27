@@ -19,6 +19,11 @@ void Transform(uint32_t* s, const unsigned char* chunk, size_t blocks);
 #endif
 #endif
 
+namespace sha256_avx2
+{
+void TransformDouble64_8way(unsigned char* out, const unsigned char* in);
+}
+
 // Internal implementation code.
 namespace
 {
@@ -465,6 +470,7 @@ bool SelfTest(TransformType tr) {
 
 TransformType Transform = sha256::Transform;
 TransformDouble64Type TransformDouble64 = sha256::TransformDouble64;
+TransformDouble64Type TransformDouble64_8way = nullptr;
 } // namespace
 
 std::string SHA256AutoDetect()
@@ -475,6 +481,10 @@ std::string SHA256AutoDetect()
         Transform = sha256_sse4::Transform;
         TransformDouble64 = TransformDouble64Wrapper<sha256_sse4::Transform>;
         assert(SelfTest(Transform));
+        if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx) && (ebx >> 5) & 1) {
+            TransformDouble64_8way = sha256_avx2::TransformDouble64_8way;
+            return "sse4+avx2";
+        }
         return "sse4";
     }
 #endif
@@ -542,6 +552,14 @@ CSHA256& CSHA256::Reset()
 
 void DoubleSHA256_64byte(unsigned char* out, const unsigned char* in, size_t blocks)
 {
+    if (TransformDouble64_8way) {
+        while (blocks >= 8) {
+            TransformDouble64_8way(out, in);
+            out += 256;
+            in += 512;
+            blocks -= 8;
+        }
+    }
     while (blocks) {
         TransformDouble64(out, in);
         out += 32;
