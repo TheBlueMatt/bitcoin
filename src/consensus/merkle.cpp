@@ -131,9 +131,22 @@ static void MerkleComputation(const std::vector<uint256>& leaves, uint256* proot
 }
 
 uint256 ComputeMerkleRoot(const std::vector<uint256>& leaves, bool* mutated) {
-    uint256 hash;
-    MerkleComputation(leaves, &hash, mutated, -1, nullptr);
-    return hash;
+    std::vector<uint256> hashes = leaves;
+    bool mutation = false;
+    while (hashes.size() > 1) {
+        if (mutated) {
+            for (size_t pos = 0; pos < hashes.size(); pos += 2) {
+                if (hashes[pos] == hashes[pos + 1]) mutation = true;
+            }
+        }
+        if (hashes.size() & 1) {
+            hashes.push_back(hashes.back());
+        }
+        DoubleSHA256_64byte(hashes[0].begin(), hashes[0].begin(), hashes.size() / 2);
+        hashes.resize(hashes.size() / 2);
+    }
+    if (mutated) *mutated = mutation;
+    return hashes[0];
 }
 
 std::vector<uint256> ComputeMerkleBranch(const std::vector<uint256>& leaves, uint32_t position) {
