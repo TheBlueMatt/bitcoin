@@ -2363,6 +2363,23 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 }
             }
         }
+        // If we're in IBD, we want outbound peers that will serve us a useful
+        // chain.  Disconnect peers that are behind us or on chains with
+        // insufficient work.
+        if (IsInitialBlockDownload() && nCount != MAX_HEADERS_RESULTS) {
+            // When nCount < MAX_HEADERS_RESULTS, we know we have no more
+            // headers to fetch from this peer.
+            const arith_uint256 &peer_chainwork = nodestate->pindexBestKnownBlock->nChainWork;
+            const arith_uint256 &our_chainwork = std::max(chainActive.Tip()->nChainWork, nMinimumChainWork);
+            if (peer_chainwork < our_chainwork) {
+                // This peer has too little work on their headers chain to help
+                // us sync -- disconnect if using an outbound slot (unless
+                // whitelisted).
+                if (!(pfrom->fInbound || pfrom->fWhitelisted || pfrom->fAddnode)) {
+                    pfrom->fDisconnect = true;
+                }
+            }
+        }
         }
     }
 
