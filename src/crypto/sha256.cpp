@@ -19,10 +19,12 @@ void Transform(uint32_t* s, const unsigned char* chunk, size_t blocks);
 #endif
 #endif
 
+#ifdef ENABLE_AVX2
 namespace sha256_avx2
 {
 void TransformDouble64_8way(unsigned char* out, const unsigned char* in);
 }
+#endif
 
 // Internal implementation code.
 namespace
@@ -475,7 +477,7 @@ TransformDouble64Type TransformDouble64_8way = nullptr;
 
 std::string SHA256AutoDetect()
 {
-#if defined(USE_ASM) && (defined(__x86_64__) || defined(__amd64__))
+#if defined(USE_ASM) && (defined(__x86_64__) || defined(__amd64__)) && defined(ENABLE_AVX2)
     uint32_t eax, ebx, ecx, edx;
     if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx >> 19) & 1) {
         Transform = sha256_sse4::Transform;
