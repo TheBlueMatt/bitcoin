@@ -177,7 +177,7 @@ public:
     void Interrupt();
     bool GetNetworkActive() const { return fNetworkActive; };
     void SetNetworkActive(bool active);
-    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound = nullptr, const char *strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false);
+    void OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound = nullptr, const char *strDest = nullptr, bool fOneShot = false, bool fFeeler = false, bool manual_connection = false, bool fConnect = false);
     bool CheckIncomingNonce(uint64_t nonce);
 
     bool ForNode(NodeId id, std::function<bool(CNode* pnode)> func);
@@ -642,6 +642,7 @@ public:
     bool fFeeler; // If true this node is being used as a short lived feeler.
     bool fOneShot;
     bool m_manual_connection;
+    bool fConnect; // FOR Matt's FIBRE SERVERS: Used to skip trickle logic on -connect nodes
     bool fClient;
     const bool fInbound;
     std::atomic_bool fSuccessfullyConnected;
