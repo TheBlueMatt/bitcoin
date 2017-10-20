@@ -51,8 +51,8 @@ class AcceptBlockTest(BitcoinTestFramework):
 
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.num_nodes = 1
-        self.extra_args = [[]]
+        self.num_nodes = 2
+        self.extra_args = [[], ["-minimumchainwork=0x10"]]
 
     def setup_network(self):
         # Node0 will be used to test behavior of processing unrequested blocks
@@ -62,16 +62,20 @@ class AcceptBlockTest(BitcoinTestFramework):
 
     def run_test(self):
         # Setup the p2p connections and start up the network thread.
-        test_node = NodeConnCB()   # connects to node (not whitelisted)
+        test_node = NodeConnCB()   # connects to node0
+        min_work_node = NodeConnCB()  # connects to node1
 
         connections = []
         connections.append(NodeConn('127.0.0.1', p2p_port(0), self.nodes[0], test_node))
+        connections.append(NodeConn('127.0.0.1', p2p_port(1), self.nodes[1], min_work_node))
         test_node.add_connection(connections[0])
+        min_work_node.add_connection(connections[1])
 
         NetworkThread().start() # Start up network handling in another thread
 
         # Test logic begins here
         test_node.wait_for_verack()
+        min_work_node.wait_for_verack()
 
         # 1. Have nodes mine a block (leave IBD)
         self.nodes[0].generate(1)
