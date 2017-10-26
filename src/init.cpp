@@ -277,6 +277,7 @@ void Shutdown()
 #endif
     globalVerifyHandle.reset();
     ECC_Stop();
+    StopDebugLogFlushThread();
     LogPrintf("%s: done\n", __func__);
 }
 

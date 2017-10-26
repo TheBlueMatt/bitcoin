@@ -79,6 +79,10 @@
 #include <openssl/rand.h>
 #include <openssl/conf.h>
 
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
@@ -173,9 +177,75 @@ static FILE* fileout = nullptr;
 static boost::mutex* mutexDebugLog = nullptr;
 static std::list<std::string>* vMsgsBeforeOpenLog;
 
+#define LOG_LINE_BUFFER_SIZE 128
+static std::atomic_int g_next_pending_log_line(0);
+static std::atomic_int g_next_undef_log_line(0);
+static std::atomic_bool g_debug_log_flush_thread_exit;
+static std::mutex g_log_buff_mutex;
+static std::condition_variable g_log_buff_cv;
+static std::array<std::string, LOG_LINE_BUFFER_SIZE> g_debug_log_buff;
+static std::unique_ptr<std::thread> g_buff_flush_thread; // non-ptr fails to build in LTO?
+static std::once_flag g_buff_flush_thread_started;
+
+static void DebugLogFlush()
+{
+    while (true) {
+        int next_pending_log = g_next_pending_log_line.load(std::memory_order_acquire);
+        int next_undef_log = g_next_undef_log_line.load(std::memory_order_acquire);
+        if (next_pending_log == next_undef_log) {
+            if (g_debug_log_flush_thread_exit) return;
+            std::unique_lock<std::mutex> lock(g_log_buff_mutex);
+            while (next_pending_log == next_undef_log && !g_debug_log_flush_thread_exit) {
+                g_log_buff_cv.wait(lock);
+                next_pending_log = g_next_pending_log_line.load(std::memory_order_acquire);
+                next_undef_log = g_next_undef_log_line.load(std::memory_order_acquire);
+            }
+        }
+
+        while (next_pending_log != next_undef_log) {
+            fwrite(g_debug_log_buff[next_pending_log].data(), 1, g_debug_log_buff[next_pending_log].size(), fileout);
+            g_debug_log_buff[next_pending_log].clear();
+            g_debug_log_buff[next_pending_log].shrink_to_fit();
+            next_pending_log = (next_pending_log + 1) % LOG_LINE_BUFFER_SIZE;
+            g_next_pending_log_line.store(next_pending_log, std::memory_order_release);
+            g_log_buff_cv.notify_one();
+        }
+    }
+}
+
+void StopDebugLogFlushThread() {
+    g_debug_log_flush_thread_exit = true;
+    {
+        std::unique_lock<std::mutex> lock(g_log_buff_mutex);
+        g_log_buff_cv.notify_all();
+    }
+    if (g_buff_flush_thread) {
+        g_buff_flush_thread->join();
+    }
+}
+
 static int FileWriteStr(const std::string &str, FILE *fp)
 {
-    return fwrite(str.data(), 1, str.size(), fp);
+    std::call_once(g_buff_flush_thread_started, [] {
+        g_buff_flush_thread.reset(new std::thread(DebugLogFlush));
+        });
+
+    std::unique_lock<std::mutex> lock(g_log_buff_mutex);
+    int next_pending_log = g_next_pending_log_line.load(std::memory_order_acquire);
+    int next_undef_log = g_next_undef_log_line.load(std::memory_order_acquire);
+    while (next_pending_log == (next_undef_log + 1) % LOG_LINE_BUFFER_SIZE && !g_debug_log_flush_thread_exit) {
+        g_log_buff_cv.wait(lock);
+        next_pending_log = g_next_pending_log_line.load(std::memory_order_acquire);
+        next_undef_log = g_next_undef_log_line.load(std::memory_order_acquire);
+    }
+    if (g_debug_log_flush_thread_exit) {
+        return fwrite(str.data(), 1, str.size(), fp);
+    } else {
+        g_debug_log_buff[next_undef_log] = str;
+        g_next_undef_log_line.store((next_undef_log + 1) % LOG_LINE_BUFFER_SIZE, std::memory_order_release);
+        g_log_buff_cv.notify_all();
+        return str.size();
+    }
 }
 
 static void DebugPrintInit()
