@@ -825,7 +825,6 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
                 // Only the witness is missing, so the transaction itself may be fine.
                 state.Invalid(ValidationInvalidReason::WITNESS_MUTATED, false,
                           state.GetRejectCode(), state.GetRejectReason(), state.GetDebugMessage());
-                state.SetCorruptionPossible();
             }
             return false; // state filled in by CheckInputs
         }
@@ -1197,7 +1196,7 @@ void static InvalidChainFound(CBlockIndex* pindexNew)
 }
 
 void static InvalidBlockFound(CBlockIndex *pindex, const CValidationState &state) {
-    if (!state.CorruptionPossible()) {
+    if (state.GetReason() != ValidationInvalidReason::MUTATED) {
         pindex->nStatus |= BLOCK_FAILED_VALID;
         g_failed_blocks.insert(pindex);
         setDirtyBlockIndex.insert(pindex);
@@ -2402,7 +2401,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
             if (!ConnectTip(state, chainparams, pindexConnect, pindexConnect == pindexMostWork ? pblock : std::shared_ptr<const CBlock>(), connectTrace, disconnectpool)) {
                 if (state.IsInvalid()) {
                     // The block violates a consensus rule.
-                    if (!state.CorruptionPossible())
+                    if (state.GetReason() != ValidationInvalidReason::MUTATED)
                         InvalidChainFound(vpindexToConnect.back());
                     state = CValidationState();
                     fInvalidFound = true;
@@ -3224,7 +3223,7 @@ static bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidation
 
     if (!CheckBlock(block, state, chainparams.GetConsensus()) ||
         !ContextualCheckBlock(block, state, chainparams.GetConsensus(), pindex->pprev)) {
-        if (state.IsInvalid() && !state.CorruptionPossible()) {
+        if (state.IsInvalid() && state.GetReason() != ValidationInvalidReason::MUTATED) {
             pindex->nStatus |= BLOCK_FAILED_VALID;
             setDirtyBlockIndex.insert(pindex);
         }
