@@ -880,16 +880,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
         // Store transaction in memory
         pool.addUnchecked(hash, entry, setAncestors, validForFeeEstimation);
-
-        // trim mempool and check if tx was trimmed
-        if (!bypass_limits) {
-            LimitMempoolSize(pool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60);
-            if (!pool.exists(hash))
-                return state.Invalid(ValidationInvalidReason::MEMPOOL_LIMIT, false, REJECT_INSUFFICIENTFEE, "mempool full");
-        }
     }
-
-    GetMainSignals().TransactionAddedToMempool(ptx);
 
     return true;
 }
@@ -901,9 +892,24 @@ static bool AcceptToMemoryPoolWithTime(const CChainParams& chainparams, CTxMemPo
 {
     std::vector<COutPoint> coins_to_uncache;
     bool res = AcceptToMemoryPoolWorker(chainparams, pool, state, tx, nAcceptTime, plTxnReplaced, bypass_limits, nAbsurdFee, coins_to_uncache);
+    {
+        LOCK(pool.cs);
+
+        // trim mempool and check if tx was trimmed
+        if (!bypass_limits) {
+            LimitMempoolSize(pool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60);
+            if (!pool.exists(tx->GetHash())) {
+                state.Invalid(ValidationInvalidReason::MEMPOOL_LIMIT, false, REJECT_INSUFFICIENTFEE, "mempool full");
+                res = false;
+            }
+        }
+    }
+
     if (!res) {
         for (const COutPoint& hashTx : coins_to_uncache)
             pcoinsTip->Uncache(hashTx);
+    } else {
+        GetMainSignals().TransactionAddedToMempool(tx);
     }
     // After we've (potentially) uncached entries, ensure our coins cache is still within its size limits
     CValidationState stateDummy;
@@ -917,6 +923,57 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
 {
     const CChainParams& chainparams = Params();
     return AcceptToMemoryPoolWithTime(chainparams, pool, state, tx, GetTime(), plTxnReplaced, bypass_limits, nAbsurdFee);
+}
+
+void AcceptToMemoryPool(CTxMemPool& pool, std::vector<CValidationState> &states,
+                        const std::vector<CTransactionRef> &txn,
+                        std::list<CTransactionRef>* plTxnReplaced,
+                        bool bypass_limits, const CAmount nAbsurdFee) {
+    AssertLockHeld(cs_main);
+
+    states.clear();
+    states.resize(txn.size());
+    std::vector<std::vector<COutPoint>> coins_to_uncache(txn.size());
+    std::vector<bool> successfully_added(txn.size());
+
+    int64_t accept_time = GetTime();
+    const CChainParams& chainparams = Params();
+
+    for (size_t i = 0; i < txn.size(); i++) {
+        successfully_added[i] = AcceptToMemoryPoolWorker(chainparams, pool, states[i], txn[i], accept_time, plTxnReplaced, bypass_limits, nAbsurdFee, coins_to_uncache[i]);
+    }
+
+    {
+        LOCK(pool.cs);
+
+        // trim mempool and check if tx was trimmed
+        if (!bypass_limits) {
+            LimitMempoolSize(pool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60);
+            for (size_t i = 0; i < txn.size(); i++) {
+                if (!pool.exists(txn[i]->GetHash())) {
+                    states[i].Invalid(ValidationInvalidReason::MEMPOOL_LIMIT, false, REJECT_INSUFFICIENTFEE, "mempool full");
+                    successfully_added[i] = false;
+                }
+            }
+        }
+    }
+
+    for (size_t i = 0; i < txn.size(); i++) {
+        if (!successfully_added[i]) {
+            for (const COutPoint& hashTx : coins_to_uncache[i]) {
+                pcoinsTip->Uncache(hashTx);
+            }
+            if (states[i].IsValid()) {
+                states[i].Error("unknown-error");
+            }
+        } else {
+            GetMainSignals().TransactionAddedToMempool(txn[i]);
+        }
+    }
+
+    // After we've (potentially) uncached entries, ensure our coins cache is still within its size limits
+    CValidationState stateDummy;
+    FlushStateToDisk(chainparams, stateDummy, FLUSH_STATE_PERIODIC);
 }
 
 /** Return transaction in txOut, and if it was found inside a block, its hash is placed in hashBlock */

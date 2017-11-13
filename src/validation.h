@@ -309,6 +309,19 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
                         std::list<CTransactionRef>* plTxnReplaced,
                         bool bypass_limits, const CAmount nAbsurdFee);
 
+/** (try to) add a group of transactions to memory pool
+ * plTxnReplaced will be appended to with all transactions replaced from mempool
+ * Useful for adding orphans and a transaction at the same time to ensure CPFP feerates
+ * are considered during the eviction/minimum feerate calculations
+ * states will be cleared and populated with one entry per transaction
+ * Clients should check states[i].IsInvalid as well as state[i].IsError() to
+ * determine the equivalent boolean return value for the single-tx ATMP version.
+ **/
+void AcceptToMemoryPool(CTxMemPool& pool, std::vector<CValidationState> &states,
+                        const std::vector<CTransactionRef> &txn,
+                        std::list<CTransactionRef>* plTxnReplaced,
+                        bool bypass_limits, const CAmount nAbsurdFee);
+
 /** Convert CValidationState to a human-readable message for logging */
 std::string FormatStateMessage(const CValidationState &state);
 
