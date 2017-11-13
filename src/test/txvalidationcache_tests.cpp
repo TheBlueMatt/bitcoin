@@ -29,7 +29,7 @@ ToMemPool(CMutableTransaction& tx)
     LOCK(cs_main);
 
     CValidationState state;
-    return AcceptToMemoryPool(mempool, state, MakeTransactionRef(tx), nullptr /* pfMissingInputs */,
+    return AcceptToMemoryPool(mempool, state, MakeTransactionRef(tx),
                               nullptr /* plTxnReplaced */, true /* bypass_limits */, 0 /* nAbsurdFee */);
 }
 
