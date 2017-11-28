@@ -4239,9 +4239,13 @@ void static CheckBlockIndex(const Consensus::Params& consensusParams)
             }
             rangeUnlinked.first++;
         }
-        if (pindex->pprev && (pindex->nStatus & BLOCK_HAVE_DATA) && pindexFirstNeverProcessed != nullptr && pindexFirstInvalid == nullptr) {
-            // If this block has block data available, some parent was never received, and has no invalid parents, it must be in mapBlocksUnlinked.
+        if (pindex->pprev && pindex->nTx && pindexFirstNeverProcessed != nullptr) {
+            // If this block has at some point had block data available, some parent was never received, it must be in mapBlocksUnlinked.
             assert(foundInUnlinked);
+        } else if (foundInUnlinked) {
+            // If we are otherwise in mapBlocksUnlinked, then it must be because we were previously in setBlockIndexCandidates, which
+            // means we must at least have nChainTx set.
+            assert(pindex->nChainTx);
         }
         if (!(pindex->nStatus & BLOCK_HAVE_DATA)) assert(!foundInUnlinked); // Can't be in mapBlocksUnlinked if we don't HAVE_DATA
         if (pindexFirstMissing == nullptr) assert(!foundInUnlinked); // We aren't missing data for any parent -- cannot be in mapBlocksUnlinked.
