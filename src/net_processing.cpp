@@ -510,10 +510,41 @@ void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<con
             vToFetch[i - 1] = vToFetch[i]->pprev;
         }
 
+        // Update pindexLastCommonBlock as long as all ancestors are already
+        // downloaded, or if it's already part of our chain (and therefore
+        // don't need it even if pruned).
+        // Note that there is a race here where a parent of
+        // pindexLastCommonBlock could be pruned out from under us and we don't
+        // recover by resetting pindexLastCommonBlock further up and
+        // re-downloading it, but there are equivalent races in the pruning logic
+        // (and its more likely that you simply prune some intermediate undo
+        // files anyway), so its probably barely worth fixing.
+        for (const CBlockIndex* pindex : vToFetch) {
+            if (!pindex->IsValid(BLOCK_VALID_TREE)) {
+                // We consider the chain that this peer is on invalid.
+                return;
+            }
+            if (pindex->nStatus & BLOCK_HAVE_DATA || chainActive.Contains(pindex)) {
+                if (pindex->nChainTx) {
+                    state->pindexLastCommonBlock = pindex;
+                } else {
+                    // We should never actually hit this case -
+                    // a) nChainTx a precondition for chainActive.Contains
+                    // b) pindexLastCommonBlock starts on chainActive
+                    //    (ie with nChainTx)
+                    // c) We dont advance beyond where we have blocks, and
+                    //    since pindexLastCommonBlock starts with nChainTx, and
+                    //    we started with pindexLastCommonBlock, and since
+                    //    nChainTx is never unset on CBlockIndex*es, and since
+                    //    nChainTx is set for anything with a prev with nChainTx
+                    //    and with BLOCK_HAVE_DATA, it must always be set here!
+                }
+            }
+            if (!(pindex->nStatus & BLOCK_HAVE_DATA)) break;
+        }
+
         // Iterate over those blocks in vToFetch (in forward direction), adding the ones that
-        // are not yet downloaded and not in flight to vBlocks. In the mean time, update
-        // pindexLastCommonBlock as long as all ancestors are already downloaded, or if it's
-        // already part of our chain (and therefore don't need it even if pruned).
+        // are not yet downloaded and not in flight to vBlocks.
         for (const CBlockIndex* pindex : vToFetch) {
             if (!pindex->IsValid(BLOCK_VALID_TREE)) {
                 // We consider the chain that this peer is on invalid.
@@ -523,10 +554,8 @@ void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<con
                 // We wouldn't download this block or its descendants from this peer.
                 return;
             }
-            if (pindex->nStatus & BLOCK_HAVE_DATA || chainActive.Contains(pindex)) {
-                if (pindex->nChainTx)
-                    state->pindexLastCommonBlock = pindex;
-            } else if (mapBlocksInFlight.count(pindex->GetBlockHash()) == 0) {
+            bool have_block = pindex->nStatus & BLOCK_HAVE_DATA || chainActive.Contains(pindex);
+            if (!have_block && mapBlocksInFlight.count(pindex->GetBlockHash()) == 0) {
                 // The block is not already downloaded, and not yet in flight.
                 if (pindex->nHeight > nWindowEnd) {
                     // We reached the end of the window.
@@ -540,7 +569,7 @@ void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<con
                 if (vBlocks.size() == count) {
                     return;
                 }
-            } else if (waitingfor == -1) {
+            } else if (!have_block && waitingfor == -1) {
                 // This is the first already-in-flight block.
                 waitingfor = mapBlocksInFlight[pindex->GetBlockHash()].first;
             }
