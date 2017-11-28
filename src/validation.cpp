@@ -3869,8 +3869,23 @@ bool RewindBlockIndex(const CChainParams& params)
     // Reduce validity flag and have-data flags.
     // We do this after actual disconnecting, otherwise we'll end up writing the lack of data
     // to disk before writing the chainstate, resulting in a failure to continue if interrupted.
-    for (BlockMap::iterator it = mapBlockIndex.begin(); it != mapBlockIndex.end(); it++) {
-        CBlockIndex* pindexIter = it->second;
+    //
+    // We must do this in height-sorted-order as we are un-setting nChainTx which requires
+    // unsetting nChainTx in all descendant blocks as well. Note that in the normal case this
+    // is obviously unnecessary as any blocks after the first which we set nChainTx to 0 for
+    // will also meet the first conditional and we'll do the same for it, however in regtest
+    // one may change the segwit activation height which we handle gracefully here.
+    std::vector<std::pair<int, CBlockIndex*> > vSortedByHeight;
+    vSortedByHeight.reserve(mapBlockIndex.size());
+    for (const std::pair<uint256, CBlockIndex*>& item : mapBlockIndex)
+    {
+        CBlockIndex* pindex = item.second;
+        vSortedByHeight.push_back(std::make_pair(pindex->nHeight, pindex));
+    }
+    sort(vSortedByHeight.begin(), vSortedByHeight.end());
+    for (const std::pair<int, CBlockIndex*>& item : vSortedByHeight)
+    {
+        CBlockIndex* pindexIter = item.second;
 
         // Note: If we encounter an insufficiently validated block that
         // is on chainActive, it must be because we are a pruning node, and
@@ -3902,6 +3917,10 @@ bool RewindBlockIndex(const CChainParams& params)
                     ++ret.first;
                 }
             }
+        } else if (pindexIter->pprev && pindexIter->nChainTx && !pindexIter->pprev->nChainTx) {
+            pindexIter->nChainTx = 0;
+            pindexIter->nSequenceId = 0;
+            setDirtyBlockIndex.insert(pindexIter);
         } else if (pindexIter->IsValid(BLOCK_VALID_TRANSACTIONS) && pindexIter->nChainTx) {
             setBlockIndexCandidates.insert(pindexIter);
         }
