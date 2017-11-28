@@ -2732,10 +2732,9 @@ static bool ReceivedBlockTransactions(const CBlock &block, CValidationState& sta
                 mapBlocksUnlinked.erase(it);
             }
         }
-    } else {
-        if (pindexNew->pprev && pindexNew->pprev->IsValid(BLOCK_VALID_TREE)) {
-            mapBlocksUnlinked.insert(std::make_pair(pindexNew->pprev, pindexNew));
-        }
+    } else if (pindexNew->pprev) {
+        assert(pindexNew->pprev->IsValid(BLOCK_VALID_TREE));
+        mapBlocksUnlinked.insert(std::make_pair(pindexNew->pprev, pindexNew));
     }
 
     return true;
