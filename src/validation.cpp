@@ -2317,6 +2317,9 @@ static CBlockIndex* FindMostWorkChain() {
                         // If we're missing data, then add back to mapBlocksUnlinked,
                         // so that if the block arrives in the future we can try adding
                         // to setBlockIndexCandidates again.
+                        // Precondition for addition is that nChainTx is set (which is assumed
+                        // by the presence of a child block in setBlockIndexCandidates).
+                        assert(pindexFailed->nChainTx);
                         mapBlocksUnlinked.insert(std::make_pair(pindexFailed->pprev, pindexFailed));
                     }
                     setBlockIndexCandidates.erase(pindexFailed);
@@ -2709,12 +2712,16 @@ static bool ReceivedBlockTransactions(const CBlock &block, CValidationState& sta
         while (!queue.empty()) {
             CBlockIndex *pindex = queue.front();
             queue.pop_front();
-            pindex->nChainTx = (pindex->pprev ? pindex->pprev->nChainTx : 0) + pindex->nTx;
-            {
-                LOCK(cs_nBlockSequenceId);
-                pindex->nSequenceId = nBlockSequenceId++;
+            if (pindex->nChainTx == 0) { // First type of mapBlocksUnlinked entry
+                if (pindex->pprev) assert(pindex->pprev->nChainTx);
+                pindex->nChainTx = (pindex->pprev ? pindex->pprev->nChainTx : 0) + pindex->nTx;
+                {
+                    LOCK(cs_nBlockSequenceId);
+                    pindex->nSequenceId = nBlockSequenceId++;
+                }
             }
             if (chainActive.Tip() == nullptr || !setBlockIndexCandidates.value_comp()(pindex, chainActive.Tip())) {
+                // Its always safe to add to setBlockIndexCandidates here as we've always set nChainTx by now.
                 setBlockIndexCandidates.insert(pindex);
             }
             std::pair<std::multimap<CBlockIndex*, CBlockIndex*>::iterator, std::multimap<CBlockIndex*, CBlockIndex*>::iterator> range = mapBlocksUnlinked.equal_range(pindex);
