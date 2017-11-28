@@ -130,8 +130,13 @@ namespace {
      * missing the data for the block.
      */
     std::set<CBlockIndex*, CBlockIndexWorkComparator> setBlockIndexCandidates;
-    /** All pairs A->B, where A (or one of its ancestors) misses transactions, but B has transactions.
-     * Pruned nodes may have entries where B is missing data.
+    /** mapBlocksUnlinked serves two distinct purposes, storing pairs A->B
+     *  where B is a direct descendant of A:
+     *  1) Keeps nChainTx up to date by storing all pairs where A (or one of
+     *     its ancestors) has nTx unset, but B has nTx set.
+     *  2) Keeps setBlockIndexCandidates up to date by holding all pairs where
+     *     B is necessary to complete the connect part of a reorg to a block
+     *     which was previously in setBlockIndexCandidates.
      */
     std::multimap<CBlockIndex*, CBlockIndex*> mapBlocksUnlinked;
 
@@ -3324,19 +3329,6 @@ void PruneOneBlockFile(const int fileNumber)
             pindex->nDataPos = 0;
             pindex->nUndoPos = 0;
             setDirtyBlockIndex.insert(pindex);
-
-            // Prune from mapBlocksUnlinked -- any block we prune would have
-            // to be downloaded again in order to consider its chain, at which
-            // point it would be considered as a candidate for
-            // mapBlocksUnlinked or setBlockIndexCandidates.
-            std::pair<std::multimap<CBlockIndex*, CBlockIndex*>::iterator, std::multimap<CBlockIndex*, CBlockIndex*>::iterator> range = mapBlocksUnlinked.equal_range(pindex->pprev);
-            while (range.first != range.second) {
-                std::multimap<CBlockIndex *, CBlockIndex *>::iterator _it = range.first;
-                range.first++;
-                if (_it->second == pindex) {
-                    mapBlocksUnlinked.erase(_it);
-                }
-            }
         }
     }
 
