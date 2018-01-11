@@ -28,7 +28,7 @@ MAKE_RAII(evhttp_request);
 MAKE_RAII(evhttp_connection);
 
 inline raii_event_base obtain_event_base() {
-    auto result = raii_event_base(event_base_new());
+    raii_event_base result{event_base_new()};
     if (!result.get())
         throw std::runtime_error("cannot create event_base");
     return result;
@@ -47,7 +47,7 @@ inline raii_evhttp_request obtain_evhttp_request(void(*cb)(struct evhttp_request
 }
 
 inline raii_evhttp_connection obtain_evhttp_connection_base(struct event_base* base, std::string host, uint16_t port) {
-    auto result = raii_evhttp_connection(evhttp_connection_base_new(base, nullptr, host.c_str(), port));
+    raii_evhttp_connection result{evhttp_connection_base_new(base, nullptr, host.c_str(), port)};
     if (!result.get())
         throw std::runtime_error("create connection failed");
     return result;

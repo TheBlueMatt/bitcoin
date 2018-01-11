@@ -884,7 +884,7 @@ size_t CConnman::SocketSendData(CNode *pnode) const
     size_t nSentSize = 0;
 
     while (it != pnode->vSendMsg.end()) {
-        const auto &data = *it;
+        const std::vector<unsigned char>& data = *it;
         assert(data.size() > pnode->nSendOffset);
         int nBytes = 0;
         {

@@ -1208,7 +1208,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                 connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
                 push = true;
             } else if (pfrom->timeLastMempoolReq) {
-                auto txinfo = mempool.info(inv.hash);
+                TxMempoolInfo txinfo = mempool.info(inv.hash);
                 // To protect privacy, do not answer getdata using the mempool when
                 // that TX couldn't have been INVed in reply to a MEMPOOL request.
                 if (txinfo.tx && txinfo.nTime <= pfrom->timeLastMempoolReq) {
@@ -3447,7 +3447,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
 
             // Respond to BIP35 mempool requests
             if (fSendTrickle && pto->fSendMempool) {
-                auto vtxinfo = mempool.infoAll();
+                std::vector<TxMempoolInfo> vtxinfo = mempool.infoAll();
                 pto->fSendMempool = false;
                 CAmount filterrate = 0;
                 {
@@ -3512,7 +3512,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
                         continue;
                     }
                     // Not in the mempool anymore? don't bother sending it.
-                    auto txinfo = mempool.info(hash);
+                    TxMempoolInfo txinfo = mempool.info(hash);
                     if (!txinfo.tx) {
                         continue;
                     }

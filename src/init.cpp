@@ -311,10 +311,10 @@ void OnRPCStopped()
 
 std::string HelpMessage(HelpMessageMode mode)
 {
-    const auto defaultBaseParams = CreateBaseChainParams(CBaseChainParams::MAIN);
-    const auto testnetBaseParams = CreateBaseChainParams(CBaseChainParams::TESTNET);
-    const auto defaultChainParams = CreateChainParams(CBaseChainParams::MAIN);
-    const auto testnetChainParams = CreateChainParams(CBaseChainParams::TESTNET);
+    const std::unique_ptr<CBaseChainParams> defaultBaseParams = CreateBaseChainParams(CBaseChainParams::MAIN);
+    const std::unique_ptr<CBaseChainParams> testnetBaseParams = CreateBaseChainParams(CBaseChainParams::TESTNET);
+    const std::unique_ptr<CChainParams> defaultChainParams = CreateChainParams(CBaseChainParams::MAIN);
+    const std::unique_ptr<CChainParams> testnetChainParams = CreateChainParams(CBaseChainParams::TESTNET);
     const bool showDebug = gArgs.GetBoolArg("-help-debug", false);
 
     // When adding new options to the categories, please keep and ensure alphabetical ordering.
@@ -1708,7 +1708,7 @@ bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
     // Initiate outbound connections unless connect=0
     connOptions.m_use_addrman_outgoing = !gArgs.IsArgSet("-connect");
     if (!connOptions.m_use_addrman_outgoing) {
-        const auto connect = gArgs.GetArgs("-connect");
+        const std::vector<std::string> connect = gArgs.GetArgs("-connect");
         if (connect.size() != 1 || connect[0] != "0") {
             connOptions.m_specified_outgoing = connect;
         }

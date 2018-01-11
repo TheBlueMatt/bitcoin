@@ -786,7 +786,7 @@ std::vector<CTxMemPool::indexed_transaction_set::const_iterator> CTxMemPool::Get
 void CTxMemPool::queryHashes(std::vector<uint256>& vtxid)
 {
     LOCK(cs);
-    auto iters = GetSortedDepthAndScore();
+    std::vector<indexed_transaction_set::const_iterator> iters = GetSortedDepthAndScore();
 
     vtxid.clear();
     vtxid.reserve(mapTx.size());
@@ -803,7 +803,7 @@ static TxMempoolInfo GetInfo(CTxMemPool::indexed_transaction_set::const_iterator
 std::vector<TxMempoolInfo> CTxMemPool::infoAll() const
 {
     LOCK(cs);
-    auto iters = GetSortedDepthAndScore();
+    std::vector<indexed_transaction_set::const_iterator> iters = GetSortedDepthAndScore();
 
     std::vector<TxMempoolInfo> ret;
     ret.reserve(mapTx.size());

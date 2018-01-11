@@ -595,7 +595,7 @@ bool WalletModel::isSpent(const COutPoint& outpoint) const
 void WalletModel::listCoins(std::map<QString, std::vector<COutput> >& mapCoins) const
 {
     for (auto& group : wallet->ListCoins()) {
-        auto& resultGroup = mapCoins[QString::fromStdString(EncodeDestination(group.first))];
+        std::vector<COutput>& resultGroup = mapCoins[QString::fromStdString(EncodeDestination(group.first))];
         for (auto& coin : group.second) {
             resultGroup.emplace_back(std::move(coin));
         }

@@ -330,7 +330,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             }
             break;
         case ProxyIP: {
-            auto ip_port = GetProxySetting(settings, "addrProxy");
+            ProxySetting ip_port = GetProxySetting(settings, "addrProxy");
             if (!ip_port.is_set || ip_port.ip != value.toString()) {
                 ip_port.ip = value.toString();
                 SetProxySetting(settings, "addrProxy", ip_port);
@@ -339,7 +339,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         }
         break;
         case ProxyPort: {
-            auto ip_port = GetProxySetting(settings, "addrProxy");
+            ProxySetting ip_port = GetProxySetting(settings, "addrProxy");
             if (!ip_port.is_set || ip_port.port != value.toString()) {
                 ip_port.port = value.toString();
                 SetProxySetting(settings, "addrProxy", ip_port);
@@ -356,7 +356,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             }
             break;
         case ProxyIPTor: {
-            auto ip_port = GetProxySetting(settings, "addrSeparateProxyTor");
+            ProxySetting ip_port = GetProxySetting(settings, "addrSeparateProxyTor");
             if (!ip_port.is_set || ip_port.ip != value.toString()) {
                 ip_port.ip = value.toString();
                 SetProxySetting(settings, "addrSeparateProxyTor", ip_port);
@@ -365,7 +365,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         }
         break;
         case ProxyPortTor: {
-            auto ip_port = GetProxySetting(settings, "addrSeparateProxyTor");
+            ProxySetting ip_port = GetProxySetting(settings, "addrSeparateProxyTor");
             if (!ip_port.is_set || ip_port.port != value.toString()) {
                 ip_port.port = value.toString();
                 SetProxySetting(settings, "addrSeparateProxyTor", ip_port);
