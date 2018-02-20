@@ -132,11 +132,57 @@ class CVectorWriter
         if(nPos > vchData.size())
             vchData.resize(nPos);
     }
+    size_t GetPos() const {
+        return nPos;
+    }
+    void SetPos(size_t pos) {
+        nPos = pos;
+        if(nPos > vchData.size())
+            vchData.resize(nPos);
+    }
+
 private:
     const int nType;
     const int nVersion;
     std::vector<unsigned char>& vchData;
     size_t nPos;
+};
+
+/** Read-only stream for serialization from a vector */
+class VectorReader {
+private:
+    const std::vector<unsigned char>& m_v;
+
+    int m_type;
+    int m_version;
+    size_t m_read_pos;
+public:
+    VectorReader(const std::vector<unsigned char>& _v, int _type, int _version) :
+        m_v(_v), m_type(_type), m_version(_version), m_read_pos(0) {}
+
+    template <typename T>
+    VectorReader& operator>>(T& obj) {
+        ::Unserialize(*this, obj);
+        return *this;
+    }
+
+    VectorReader& read(char* pch, size_t size) {
+        // Read from the beginning of the buffer
+        unsigned int read_pos_next = m_read_pos + size;
+        if (read_pos_next > m_v.size())
+            throw std::ios_base::failure("CDataStream::read(): end of data");
+        memcpy(pch, &m_v[m_read_pos], size);
+        m_read_pos = read_pos_next;
+        return (*this);
+    }
+
+    void seek(size_t offset) {
+        m_read_pos += offset;
+    }
+
+    size_t pos() const     { return m_read_pos; }
+    int GetType() const    { return m_type; }
+    int GetVersion() const { return m_version; }
 };
 
 /** Double ended buffer combining vector and stream-like interfaces.
