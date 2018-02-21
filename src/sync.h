@@ -7,6 +7,7 @@
 #define BITCOIN_SYNC_H
 
 #include <threadsafety.h>
+#include <shared_mutex.h>
 
 #include <condition_variable>
 #include <thread>
