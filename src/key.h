@@ -125,6 +125,12 @@ public:
      */
     bool SignCompact(const uint256& hash, std::vector<unsigned char>& vchSig) const;
 
+    /**
+     * Creates a compact signature (64 bytes), which does not allow reconstructing the used public key.
+     * The format is simply the serialize r and s values (32 bytes each).
+     */
+    bool SignNonRecoverableCompact(const uint256& hash, unsigned char* result_buff) const;
+
     //! Derive BIP32 child key.
     bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
 

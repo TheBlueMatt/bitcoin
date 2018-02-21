@@ -253,6 +253,15 @@ bool CKey::SignCompact(const uint256 &hash, std::vector<unsigned char>& vchSig) 
     return true;
 }
 
+bool CKey::SignNonRecoverableCompact(const uint256 &hash, unsigned char *result_buff) const {
+    if (!fValid) return false;
+    secp256k1_ecdsa_signature sig;
+    int ret = secp256k1_ecdsa_sign(secp256k1_context_sign, &sig, hash.begin(), begin(), secp256k1_nonce_function_rfc6979, nullptr);
+    assert(ret);
+    secp256k1_ecdsa_signature_serialize_compact(secp256k1_context_sign, result_buff, &sig);
+    return true;
+}
+
 bool CKey::Load(const CPrivKey &privkey, const CPubKey &vchPubKey, bool fSkipCheck=false) {
     if (!ec_privkey_import_der(secp256k1_context_sign, (unsigned char*)begin(), privkey.data(), privkey.size()))
         return false;
