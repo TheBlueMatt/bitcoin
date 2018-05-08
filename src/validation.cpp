@@ -1072,7 +1072,7 @@ bool GetTransaction(const uint256& hash, CTransactionRef& txOut, const Consensus
 // CBlock and CBlockIndex
 //
 
-static bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart)
+static bool WriteBlockToDisk(const std::shared_ptr<const CBlock>& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart)
 {
     // Open history file to append
     CAutoFile fileout(OpenBlockFile(pos), SER_DISK, CLIENT_VERSION);
@@ -3454,12 +3454,12 @@ bool ProcessNewBlockHeaders(const std::vector<CBlockHeader>& headers, CValidatio
 }
 
 /** Store block on disk. If dbp is non-nullptr, the file is known to already reside on disk */
-static CDiskBlockPos SaveBlockToDisk(const CBlock& block, int nHeight, const CChainParams& chainparams, const CDiskBlockPos* dbp) {
+static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block, int nHeight, const CChainParams& chainparams, const CDiskBlockPos* dbp) {
     unsigned int nBlockSize = ::GetSerializeSize(block, SER_DISK, CLIENT_VERSION);
     CDiskBlockPos blockPos;
     if (dbp != nullptr)
         blockPos = *dbp;
-    if (!FindBlockPos(blockPos, nBlockSize+8, nHeight, block.GetBlockTime(), dbp != nullptr)) {
+    if (!FindBlockPos(blockPos, nBlockSize+8, nHeight, block->GetBlockTime(), dbp != nullptr)) {
         error("%s: FindBlockPos failed", __func__);
         return CDiskBlockPos();
     }
@@ -3535,7 +3535,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
     // Write block to history file
     if (fNewBlock) *fNewBlock = true;
     try {
-        CDiskBlockPos blockPos = SaveBlockToDisk(block, pindex->nHeight, chainparams, dbp);
+        CDiskBlockPos blockPos = SaveBlockToDisk(pblock, pindex->nHeight, chainparams, dbp);
         if (blockPos.IsNull()) {
             state.Error(strprintf("%s: Failed to find position to write new block to disk", __func__));
             return false;
@@ -4347,7 +4347,7 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
 
     try {
         CBlock &block = const_cast<CBlock&>(chainparams.GenesisBlock());
-        CDiskBlockPos blockPos = SaveBlockToDisk(block, 0, chainparams, nullptr);
+        CDiskBlockPos blockPos = SaveBlockToDisk(std::make_shared<const CBlock>(block), 0, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
         CBlockIndex *pindex = AddToBlockIndex(block);
