@@ -34,6 +34,9 @@ static void AddKey(CWallet& wallet, const CKey& key)
 
 BOOST_FIXTURE_TEST_CASE(rescan, TestChain100Setup)
 {
+    // Avoid the block cache providing blocks
+    gArgs.SoftSetArg("-blockcache", "0");
+
     // Cap last block file size, and mine new block in a new block file.
     CBlockIndex* const nullBlock = nullptr;
     CBlockIndex* oldTip = chainActive.Tip();
