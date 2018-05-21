@@ -68,4 +68,7 @@ bool SetSocketNoDelay(const SOCKET& hSocket);
 struct timeval MillisToTimeval(int64_t nTimeout);
 void InterruptSocks5(bool interrupt);
 
+/** Creates a socket for accepting incoming TCP connections bound to the given address */
+SOCKET BindListenSocket(const CService &addrBind, std::string& strError);
+
 #endif // BITCOIN_NETBASE_H

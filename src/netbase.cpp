@@ -737,3 +737,67 @@ void InterruptSocks5(bool interrupt)
 {
     interruptSocks5Recv = interrupt;
 }
+
+SOCKET BindListenSocket(const CService &addrBind, std::string& strError)
+{
+    strError = "";
+    int nOne = 1;
+
+    // Create socket for listening for incoming connections
+    struct sockaddr_storage sockaddr;
+    socklen_t len = sizeof(sockaddr);
+    if (!addrBind.GetSockAddr((struct sockaddr*)&sockaddr, &len))
+    {
+        strError = strprintf("Error: Bind address family for %s not supported", addrBind.ToString());
+        LogPrintf("%s\n", strError);
+        return INVALID_SOCKET;
+    }
+
+    SOCKET hListenSocket = CreateSocket(addrBind);
+    if (hListenSocket == INVALID_SOCKET)
+    {
+        strError = strprintf("Error: Couldn't open socket for incoming connections (socket returned error %s)", NetworkErrorString(WSAGetLastError()));
+        LogPrintf("%s\n", strError);
+        return INVALID_SOCKET;
+    }
+
+    // Allow binding if the port is still in TIME_WAIT state after
+    // the program was closed and restarted.
+    setsockopt(hListenSocket, SOL_SOCKET, SO_REUSEADDR, (sockopt_arg_type)&nOne, sizeof(int));
+
+    // some systems don't have IPV6_V6ONLY but are always v6only; others do have the option
+    // and enable it by default or not. Try to enable it, if possible.
+    if (addrBind.IsIPv6()) {
+#ifdef IPV6_V6ONLY
+        setsockopt(hListenSocket, IPPROTO_IPV6, IPV6_V6ONLY, (sockopt_arg_type)&nOne, sizeof(int));
+#endif
+#ifdef WIN32
+        int nProtLevel = PROTECTION_LEVEL_UNRESTRICTED;
+        setsockopt(hListenSocket, IPPROTO_IPV6, IPV6_PROTECTION_LEVEL, (const char*)&nProtLevel, sizeof(int));
+#endif
+    }
+
+    if (::bind(hListenSocket, (struct sockaddr*)&sockaddr, len) == SOCKET_ERROR)
+    {
+        int nErr = WSAGetLastError();
+        if (nErr == WSAEADDRINUSE)
+            strError = strprintf(_("Unable to bind to %s on this computer. %s is probably already running."), addrBind.ToString(), _(PACKAGE_NAME));
+        else
+            strError = strprintf(_("Unable to bind to %s on this computer (bind returned error %s)"), addrBind.ToString(), NetworkErrorString(nErr));
+        LogPrintf("%s\n", strError);
+        CloseSocket(hListenSocket);
+        return INVALID_SOCKET;
+    }
+    LogPrintf("Bound to %s\n", addrBind.ToString());
+
+    // Listen for incoming connections
+    if (listen(hListenSocket, SOMAXCONN) == SOCKET_ERROR)
+    {
+        strError = strprintf(_("Error: Listening for incoming connections failed (listen returned error %s)"), NetworkErrorString(WSAGetLastError()));
+        LogPrintf("%s\n", strError);
+        CloseSocket(hListenSocket);
+        return INVALID_SOCKET;
+    }
+
+    return hListenSocket;
+}
