@@ -23,6 +23,7 @@
 #include <key.h>
 #include <validation.h>
 #include <miner.h>
+#include <miningserver.h>
 #include <netbase.h>
 #include <net.h>
 #include <net_processing.h>
@@ -72,6 +73,7 @@ static const bool DEFAULT_REST_ENABLE = false;
 static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
 
 std::unique_ptr<CConnman> g_connman;
+std::unique_ptr<MiningServer> g_mining_server;
 std::unique_ptr<PeerLogicValidation> peerLogic;
 
 #if !(ENABLE_WALLET)
@@ -181,6 +183,9 @@ void Interrupt()
     if (g_txindex) {
         g_txindex->Interrupt();
     }
+    if (g_mining_server) {
+        g_mining_server->Interrupt();
+    }
 }
 
 void Shutdown()
@@ -210,6 +215,9 @@ void Shutdown()
     if (peerLogic) UnregisterValidationInterface(peerLogic.get());
     if (g_connman) g_connman->Stop();
     if (g_txindex) g_txindex->Stop();
+
+    if (g_mining_server) g_mining_server->Stop();
+    g_mining_server.reset();
 
     StopTorControl();
 
@@ -399,6 +407,8 @@ void SetupServerArgs()
     gArgs.AddArg("-bantime=<n>", strprintf("Number of seconds to keep misbehaving peers from reconnecting (default: %u)", DEFAULT_MISBEHAVING_BANTIME), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-bind=<addr>", "Bind to given address and always listen on it. Use [host]:port notation for IPv6", false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-connect=<ip>", "Connect only to the specified node; -connect=0 disables automatic connections (the rules for this peer are the same as for -addnode). This option can be specified multiple times to connect to multiple nodes.", false, OptionsCategory::CONNECTION);
+    gArgs.AddArg("-miningbind=<addr>", "Bind to the given address for the mining server.", false, OptionsCategory::CONNECTION);
+    gArgs.AddArg("-miningserverid=<n>", "A nonce pushed into block templates. If you have multiple servers generating block templates, set this to avoid duplicating work.", false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-discover", "Discover own IP addresses (default: 1 when listening and no -externalip or -proxy)", false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-dns", strprintf("Allow DNS lookups for -addnode, -seednode and -connect (default: %u)", DEFAULT_NAME_LOOKUP), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-dnsseed", "Query for peer addresses via DNS lookup, if low on addresses (default: 1 unless -connect used)", false, OptionsCategory::CONNECTION);
@@ -1309,6 +1319,12 @@ bool AppInitMain()
     peerLogic.reset(new PeerLogicValidation(&connman, scheduler, gArgs.GetBoolArg("-enablebip61", DEFAULT_ENABLE_BIP61)));
     RegisterValidationInterface(peerLogic.get());
 
+    assert(!g_mining_server);
+    CKey mining_server_auth_key = CKey();
+    mining_server_auth_key.MakeNewKey(true);
+    uint64_t mining_server_node_id = gArgs.GetArg("-miningserverid", 0);
+    g_mining_server = std::unique_ptr<MiningServer>(new MiningServer(mining_server_auth_key, mining_server_node_id));
+
     // sanitize comments per BIP-0014, format user agent and check total size
     std::vector<std::string> uacomments;
     for (const std::string& cmt : gArgs.GetArgs("-uacomment")) {
@@ -1751,6 +1767,17 @@ bool AppInitMain()
         }
     }
     if (!connman.Start(scheduler, connOptions)) {
+        return false;
+    }
+
+    std::string mining_server_bind = gArgs.GetArg("-miningbind", "0.0.0.0");
+
+    CService mining_bind_addr;
+    if (!Lookup(mining_server_bind.c_str(), mining_bind_addr, BaseParams().MiningPort(), false)) {
+        return InitError(ResolveErrMsg("miningbind", mining_server_bind));
+    }
+
+    if (!g_mining_server->Start(mining_bind_addr, CScript())) {
         return false;
     }
 
