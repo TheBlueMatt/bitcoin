@@ -8,15 +8,13 @@
 #include <streams.h>
 #include <sync.h>
 #include <util.h>
+#include <utilstrencodings.h>
 #include <validation.h>
 #include <validationinterface.h>
 
 #include <atomic>
 
 #include <event2/event.h>
-
-#include <util.h>
-#include <utilstrencodings.h>
 
 static const uint16_t CURRENT_MINING_PROTOCOL_VERSION = 1;
 
@@ -35,7 +33,7 @@ enum class MsgTypes {
      * 3 bytes - message length (always 0x06||0x00||0x00)
      * 2 bytes - max protocol version supported
      * 2 bytes - min protocol version supported
-	 * 2 bytes - flags (see VersionFlags, above)
+     * 2 bytes - flags (see VersionFlags, above)
      */
     PROTOCOL_SUPPORT = 1,
     /** Sent from server to client, consists of:
@@ -143,6 +141,9 @@ enum class MsgTypes {
      */
     VENDOR_MESSAGE = 12,
 };
+
+/** Default name for server auth privkey */
+static const std::string SERVER_PRIVKEY_AUTH_FILE = ".miningserver_key";
 
 struct BlockTemplate {
     CTransactionRef m_original_coinbase_tx;
@@ -891,6 +892,60 @@ static void AcceptCallback(evutil_socket_t sock, short events, void* event_ctx) 
     event_add(client_read_event, nullptr);
     auto pair = ctx->m_clients.emplace(std::piecewise_construct, std::forward_as_tuple(socket), std::forward_as_tuple());
     pair.first->second.m_read_event = client_read_event;
+}
+
+/** Get path of server auth privkey file */
+static fs::path GetAuthFile(bool temp = false)
+{
+    std::string arg = gArgs.GetArg("-miningkeyfile", SERVER_PRIVKEY_AUTH_FILE);
+    if (temp) {
+        arg += ".tmp";
+    }
+    return AbsPathForConfigVal(fs::path(arg));
+}
+
+static bool GenerateAuthKey()
+{
+    CKey auth;
+    auth.MakeNewKey(/* compressed */ true);
+    std::string key = HexStr(auth.begin(), auth.end());
+
+    std::ofstream file;
+    fs::path filepath_tmp = GetAuthFile(/* temp */ true);
+    file.open(filepath_tmp.string().c_str());
+    if (!file.is_open()) {
+        LogPrintf("Unable to open mining server authentication key file %s for writing\n", filepath_tmp.string());
+        return false;
+    }
+    file << key;
+    file.close();
+
+    fs::path filepath = GetAuthFile(/* temp */ false);
+    if (!RenameOver(filepath_tmp, filepath)) {
+        LogPrintf("Unable to rename mining server authentication key file %s to %s\n", filepath_tmp.string(), filepath.string());
+        return false;
+    }
+    LogPrintf("Generated mining server authentication key file %s\n", filepath.string());
+    return true;
+}
+
+bool MiningServer::ReadAuthKey(CKey& auth)
+{
+    std::ifstream file;
+    fs::path filepath = GetAuthFile();
+    file.open(filepath.string().c_str());
+    if (!file.is_open()) {
+        if (!GenerateAuthKey()) return false;
+        file.open(filepath.string().c_str());
+    }
+    if (!file.is_open()) return false;
+
+    std::string key;
+    std::getline(file, key);
+    file.close();
+    const auto key_data = ParseHex(key);
+    auth.Set(key_data.begin(), key_data.end(), /* compressed */ true);
+    return auth.IsValid();
 }
 
 bool MiningServer::Start(const CService& bind_addr, const CScript& payout_script) {
