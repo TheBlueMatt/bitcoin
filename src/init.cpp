@@ -401,6 +401,7 @@ void SetupServerArgs()
     gArgs.AddArg("-bind=<addr>", _("Bind to given address and always listen on it. Use [host]:port notation for IPv6"), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-miningbind=<addr>", _("Bind to the given address for the mining server."), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-miningserverid=<n>", _("A nonce pushed into block templates. If you have multiple servers generating block templates, set this to avoid duplicating work."), false, OptionsCategory::CONNECTION);
+    gArgs.AddArg("-miningkeyfile=<file>", "The file name or path of the private key used by the mining server for authentication", true, OptionsCategory::CONNECTION);
     gArgs.AddArg("-connect=<ip>", _("Connect only to the specified node(s); -connect=0 disables automatic connections (the rules for this peer are the same as for -addnode)"), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-discover", _("Discover own IP addresses (default: 1 when listening and no -externalip or -proxy)"), false, OptionsCategory::CONNECTION);
     gArgs.AddArg("-dns", _("Allow DNS lookups for -addnode, -seednode and -connect") + " " + strprintf(_("(default: %u)"), DEFAULT_NAME_LOOKUP), false, OptionsCategory::CONNECTION);
@@ -1296,8 +1297,8 @@ bool AppInitMain()
     RegisterValidationInterface(peerLogic.get());
 
     assert(!g_mining_server);
-    CKey mining_server_auth_key = CKey();
-    mining_server_auth_key.MakeNewKey(true);
+    CKey mining_server_auth_key;
+    if (!MiningServer::ReadAuthKey(mining_server_auth_key)) return false;
     uint64_t mining_server_node_id = gArgs.GetArg("-miningserverid", 0);
     g_mining_server = std::unique_ptr<MiningServer>(new MiningServer(mining_server_auth_key, mining_server_node_id));
 
