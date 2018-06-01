@@ -18,6 +18,11 @@ public:
     MiningServer(const CKey& auth_key, uint64_t node_id);
     ~MiningServer();
 
+    /**
+     * Helper to read the server privkey for auth
+     */
+    static bool ReadAuthKey(CKey& auth);
+
     // pyout_script should either be empty, or something to our local wallet/specified
     // by our local user in cli or so
     bool Start(const CService& bind_addr, const CScript& payout_script);
