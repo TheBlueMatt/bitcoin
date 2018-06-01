@@ -1322,7 +1322,7 @@ bool AppInitMain()
 
     assert(!g_mining_server);
     CKey mining_server_auth_key;
-    if (!MiningServer::ReadAuthKey(mining_server_auth_key)) return false;
+    if (!MiningServer::ReadAuthKey(mining_server_auth_key)) return InitError("Failed to read mining server auth key");
     uint64_t mining_server_node_id = gArgs.GetArg("-miningserverid", 0);
     g_mining_server = std::unique_ptr<MiningServer>(new MiningServer(mining_server_auth_key, mining_server_node_id));
 
@@ -1779,7 +1779,7 @@ bool AppInitMain()
     }
 
     if (!g_mining_server->Start(mining_bind_addr, CScript())) {
-        return false;
+        return InitError("Failed to start mining server");
     }
 
     // ********************************************************* Step 13: finished

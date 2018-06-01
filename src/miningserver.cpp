@@ -989,7 +989,7 @@ void MiningServer::Stop() {
         UnregisterValidationInterface(m_event_ctx.get());
         if (m_event_ctx->m_event_base) {
             event_base_loopbreak(m_event_ctx->m_event_base);
-            m_event_ctx->m_event_thread->join();
+            if (m_event_ctx->m_event_thread) m_event_ctx->m_event_thread->join();
         }
         m_event_ctx.reset();
     }
