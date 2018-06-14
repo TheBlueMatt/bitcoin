@@ -1155,10 +1155,9 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
             // Don't set pblock as we've sent the block
         } else {
             // Send block from disk
-            std::shared_ptr<CBlock> pblockRead = std::make_shared<CBlock>();
-            if (!ReadBlockFromDisk(*pblockRead, pindex, consensusParams))
+            pblock = ReadBlockFromDisk(pindex, consensusParams);
+            if (!pblock)
                 assert(!"cannot load block from disk");
-            pblock = pblockRead;
         }
         if (pblock) {
             if (inv.type == MSG_BLOCK)
@@ -2100,11 +2099,10 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return true;
         }
 
-        CBlock block;
-        bool ret = ReadBlockFromDisk(block, pindex, chainparams.GetConsensus());
-        assert(ret);
+        std::shared_ptr<const CBlock> block = ReadBlockFromDisk(pindex, chainparams.GetConsensus());
+        assert(block);
 
-        SendBlockTransactions(block, req, pfrom, connman);
+        SendBlockTransactions(*block, req, pfrom, connman);
     }
 
 
@@ -3425,10 +3423,9 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
                         }
                     }
                     if (!fGotBlockFromCache) {
-                        CBlock block;
-                        bool ret = ReadBlockFromDisk(block, pBestIndex, consensusParams);
-                        assert(ret);
-                        CBlockHeaderAndShortTxIDs cmpctblock(block, state.fWantsCmpctWitness);
+                        std::shared_ptr<const CBlock> block = ReadBlockFromDisk(pBestIndex, consensusParams);
+                        assert(block);
+                        CBlockHeaderAndShortTxIDs cmpctblock(*block, state.fWantsCmpctWitness);
                         connman->PushMessage(pto, msgMaker.Make(nSendFlags, NetMsgType::CMPCTBLOCK, cmpctblock));
                     }
                     state.pindexBestHeaderSent = pBestIndex;

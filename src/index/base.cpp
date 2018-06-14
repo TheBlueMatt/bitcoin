@@ -119,13 +119,13 @@ void BaseIndex::ThreadSync()
                 last_locator_write_time = current_time;
             }
 
-            CBlock block;
-            if (!ReadBlockFromDisk(block, pindex, consensus_params)) {
+            std::shared_ptr<const CBlock> block = ReadBlockFromDisk(pindex, consensus_params);
+            if (!block) {
                 FatalError("%s: Failed to read block %s from disk",
                            __func__, pindex->GetBlockHash().ToString());
                 return;
             }
-            if (!WriteBlock(block, pindex)) {
+            if (!WriteBlock(*block, pindex)) {
                 FatalError("%s: Failed to write block %s to index database",
                            __func__, pindex->GetBlockHash().ToString());
                 return;

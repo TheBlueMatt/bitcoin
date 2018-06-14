@@ -732,14 +732,14 @@ static UniValue getblockheader(const JSONRPCRequest& request)
     return blockheaderToJSON(pblockindex);
 }
 
-static CBlock GetBlockChecked(const CBlockIndex* pblockindex)
+static std::shared_ptr<const CBlock> GetBlockChecked(const CBlockIndex* pblockindex)
 {
-    CBlock block;
     if (IsBlockPruned(pblockindex)) {
         throw JSONRPCError(RPC_MISC_ERROR, "Block not available (pruned data)");
     }
 
-    if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus())) {
+    std::shared_ptr<const CBlock> block = ReadBlockFromDisk(pblockindex, Params().GetConsensus());
+    if (!block) {
         // Block not found on disk. This could be because we have the block
         // header in our index but don't have the block (for example if a
         // non-whitelisted node sends us an unrequested long chain of valid
@@ -820,7 +820,7 @@ static UniValue getblock(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
     }
 
-    const CBlock block = GetBlockChecked(pblockindex);
+    std::shared_ptr<const CBlock> block = GetBlockChecked(pblockindex);
 
     if (verbosity <= 0)
     {
@@ -830,7 +830,7 @@ static UniValue getblock(const JSONRPCRequest& request)
         return strHex;
     }
 
-    return blockToJSON(block, pblockindex, verbosity >= 2);
+    return blockToJSON(*block, pblockindex, verbosity >= 2);
 }
 
 struct CCoinsStats
@@ -1737,7 +1737,7 @@ static UniValue getblockstats(const JSONRPCRequest& request)
         }
     }
 
-    const CBlock block = GetBlockChecked(pindex);
+    std::shared_ptr<const CBlock> block = GetBlockChecked(pindex);
 
     const bool do_all = stats.size() == 0; // Calculate everything if nothing selected (default)
     const bool do_mediantxsize = do_all || stats.count("mediantxsize") != 0;
@@ -1771,7 +1771,7 @@ static UniValue getblockstats(const JSONRPCRequest& request)
     std::vector<CAmount> feerate_array;
     std::vector<int64_t> txsize_array;
 
-    for (const auto& tx : block.vtx) {
+    for (const auto& tx : block->vtx) {
         outputs += tx->vout.size();
 
         CAmount tx_total_out = 0;
@@ -1852,9 +1852,9 @@ static UniValue getblockstats(const JSONRPCRequest& request)
     }
 
     UniValue ret_all(UniValue::VOBJ);
-    ret_all.pushKV("avgfee", (block.vtx.size() > 1) ? totalfee / (block.vtx.size() - 1) : 0);
+    ret_all.pushKV("avgfee", (block->vtx.size() > 1) ? totalfee / (block->vtx.size() - 1) : 0);
     ret_all.pushKV("avgfeerate", total_weight ? (totalfee * WITNESS_SCALE_FACTOR) / total_weight : 0); // Unit: sat/vbyte
-    ret_all.pushKV("avgtxsize", (block.vtx.size() > 1) ? total_size / (block.vtx.size() - 1) : 0);
+    ret_all.pushKV("avgtxsize", (block->vtx.size() > 1) ? total_size / (block->vtx.size() - 1) : 0);
     ret_all.pushKV("blockhash", pindex->GetBlockHash().GetHex());
     ret_all.pushKV("height", (int64_t)pindex->nHeight);
     ret_all.pushKV("ins", inputs);
@@ -1878,7 +1878,7 @@ static UniValue getblockstats(const JSONRPCRequest& request)
     ret_all.pushKV("total_size", total_size);
     ret_all.pushKV("total_weight", total_weight);
     ret_all.pushKV("totalfee", totalfee);
-    ret_all.pushKV("txs", (int64_t)block.vtx.size());
+    ret_all.pushKV("txs", (int64_t)block->vtx.size());
     ret_all.pushKV("utxo_increase", outputs - inputs);
     ret_all.pushKV("utxo_size_inc", utxo_size_inc);
 

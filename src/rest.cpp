@@ -208,7 +208,6 @@ static bool rest_block(HTTPRequest* req,
     if (!ParseHashStr(hashStr, hash))
         return RESTERR(req, HTTP_BAD_REQUEST, "Invalid hash: " + hashStr);
 
-    CBlock block;
     CBlockIndex* pblockindex = nullptr;
     {
         LOCK(cs_main);
@@ -219,9 +218,11 @@ static bool rest_block(HTTPRequest* req,
 
         if (IsBlockPruned(pblockindex))
             return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not available (pruned data)");
+    }
 
-        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
-            return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
+    std::shared_ptr<const CBlock> block = ReadBlockFromDisk(pblockindex, Params().GetConsensus());
+    if (!block) {
+        return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
     }
 
     CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags());
@@ -246,7 +247,7 @@ static bool rest_block(HTTPRequest* req,
         UniValue objBlock;
         {
             LOCK(cs_main);
-            objBlock = blockToJSON(block, pblockindex, showTxDetails);
+            objBlock = blockToJSON(*block, pblockindex, showTxDetails);
         }
         std::string strJSON = objBlock.write() + "\n";
         req->WriteHeader("Content-Type", "application/json");
