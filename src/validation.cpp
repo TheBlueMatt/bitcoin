@@ -273,6 +273,12 @@ namespace {
 
     /** Dirty block file entries. */
     std::set<int> setDirtyFileInfo;
+
+    CCriticalSection g_cs_full_block_cache;
+    /** Rolling cache of CBlocks recently written to disk */
+    std::map<const CBlockIndex*, std::shared_ptr<const CBlock>, CBlockIndexWorkComparator> g_full_block_cache GUARDED_BY(g_cs_full_block_cache);
+    /** In-memory size of g_full_block_cache */
+    size_t g_full_block_cache_size GUARDED_BY(g_cs_full_block_cache) = 0;
 } // anon namespace
 
 CBlockIndex* FindForkInGlobalIndex(const CChain& chain, const CBlockLocator& locator)
@@ -1311,12 +1317,12 @@ static bool WriteBlockToDisk(const std::shared_ptr<const CBlock>& block, CDiskBl
 }
 
 /** Store block on disk. If dbp is non-nullptr, the file is known to already reside on disk */
-static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block, int nHeight, const CChainParams& chainparams, const CDiskBlockPos* dbp) {
+static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block, const CBlockIndex* pindex, const CChainParams& chainparams, const CDiskBlockPos* dbp) {
     unsigned int nBlockSize = ::GetSerializeSize(block, SER_DISK, CLIENT_VERSION);
     CDiskBlockPos blockPos;
     if (dbp != nullptr)
         blockPos = *dbp;
-    if (!FindBlockPos(blockPos, nBlockSize+8, nHeight, block->GetBlockTime(), dbp != nullptr)) {
+    if (!FindBlockPos(blockPos, nBlockSize+8, pindex->nHeight, block->GetBlockTime(), dbp != nullptr)) {
         error("%s: FindBlockPos failed", __func__);
         return CDiskBlockPos();
     }
@@ -1325,6 +1331,14 @@ static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block,
             AbortNode("Failed to write block");
             return CDiskBlockPos();
         }
+        size_t new_block_size = RecursiveDynamicUsage(block);
+        LOCK(g_cs_full_block_cache);
+        while (!g_full_block_cache.empty() && g_full_block_cache_size + memusage::DynamicUsage(g_full_block_cache) + new_block_size > (size_t)gArgs.GetArg("-blockcache", (int64_t)1000000*1024)) {
+            g_full_block_cache_size -= RecursiveDynamicUsage(g_full_block_cache.begin()->second);
+            g_full_block_cache.erase(g_full_block_cache.begin());
+        }
+        g_full_block_cache_size += new_block_size;
+        g_full_block_cache.emplace(pindex, block);
     }
     return blockPos;
 }
@@ -1359,6 +1373,12 @@ static std::shared_ptr<const CBlock> ReadBlockFromDiskNoCache(const CDiskBlockPo
 
 std::shared_ptr<const CBlock> ReadBlockFromDisk(const CBlockIndex* pindex, const Consensus::Params& consensusParams)
 {
+    {
+        LOCK(g_cs_full_block_cache);
+        auto it = g_full_block_cache.find(pindex);
+        if (it != g_full_block_cache.end()) { return it->second; }
+    }
+
     CDiskBlockPos blockPos;
     {
         LOCK(cs_main);
@@ -3538,7 +3558,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
     // Write block to history file
     if (fNewBlock) *fNewBlock = true;
     try {
-        CDiskBlockPos blockPos = SaveBlockToDisk(pblock, pindex->nHeight, chainparams, dbp);
+        CDiskBlockPos blockPos = SaveBlockToDisk(pblock, pindex, chainparams, dbp);
         if (blockPos.IsNull()) {
             state.Error(strprintf("%s: Failed to find position to write new block to disk", __func__));
             return false;
@@ -4306,6 +4326,11 @@ void UnloadBlockIndex()
         warningcache[b].clear();
     }
 
+    {
+        LOCK(g_cs_full_block_cache);
+        g_full_block_cache.clear();
+    }
+
     for (BlockMap::value_type& entry : mapBlockIndex) {
         delete entry.second;
     }
@@ -4350,10 +4375,10 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
 
     try {
         CBlock &block = const_cast<CBlock&>(chainparams.GenesisBlock());
-        CDiskBlockPos blockPos = SaveBlockToDisk(std::make_shared<const CBlock>(block), 0, chainparams, nullptr);
+        CBlockIndex *pindex = AddToBlockIndex(block);
+        CDiskBlockPos blockPos = SaveBlockToDisk(std::make_shared<const CBlock>(block), pindex, chainparams, nullptr);
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
-        CBlockIndex *pindex = AddToBlockIndex(block);
         ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());
