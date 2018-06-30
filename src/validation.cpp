@@ -1331,10 +1331,10 @@ static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block,
             AbortNode("Failed to write block");
             return CDiskBlockPos();
         }
-        size_t new_block_size = RecursiveDynamicUsage(block);
+        size_t new_block_size = 1000000;
         LOCK(g_cs_full_block_cache);
         while (!g_full_block_cache.empty() && g_full_block_cache_size + memusage::DynamicUsage(g_full_block_cache) + new_block_size > (size_t)gArgs.GetArg("-blockcache", (int64_t)1000000*1024)) {
-            g_full_block_cache_size -= RecursiveDynamicUsage(g_full_block_cache.begin()->second);
+            g_full_block_cache_size -= 1000000;
             g_full_block_cache.erase(g_full_block_cache.begin());
         }
         g_full_block_cache_size += new_block_size;
