@@ -1331,14 +1331,16 @@ static CDiskBlockPos SaveBlockToDisk(const std::shared_ptr<const CBlock>& block,
             AbortNode("Failed to write block");
             return CDiskBlockPos();
         }
-        size_t new_block_size = 1000000;
-        LOCK(g_cs_full_block_cache);
-        while (!g_full_block_cache.empty() && g_full_block_cache_size + memusage::DynamicUsage(g_full_block_cache) + new_block_size > (size_t)gArgs.GetArg("-blockcache", (int64_t)1000000*1024)) {
-            g_full_block_cache_size -= 1000000;
-            g_full_block_cache.erase(g_full_block_cache.begin());
+        if (pindex->nHeight > 300000) {
+            size_t new_block_size = 1000000;
+            LOCK(g_cs_full_block_cache);
+            while (!g_full_block_cache.empty() && g_full_block_cache_size + memusage::DynamicUsage(g_full_block_cache) + new_block_size > (size_t)gArgs.GetArg("-blockcache", (int64_t)1000000*1024)) {
+                g_full_block_cache_size -= 1000000;
+                g_full_block_cache.erase(g_full_block_cache.begin());
+            }
+            g_full_block_cache_size += new_block_size;
+            g_full_block_cache.emplace(pindex, block);
         }
-        g_full_block_cache_size += new_block_size;
-        g_full_block_cache.emplace(pindex, block);
     }
     return blockPos;
 }
@@ -1373,7 +1375,7 @@ static std::shared_ptr<const CBlock> ReadBlockFromDiskNoCache(const CDiskBlockPo
 
 std::shared_ptr<const CBlock> ReadBlockFromDisk(const CBlockIndex* pindex, const Consensus::Params& consensusParams)
 {
-    {
+    if (pindex->nHeight > 300000) {
         LOCK(g_cs_full_block_cache);
         auto it = g_full_block_cache.find(pindex);
         if (it != g_full_block_cache.end()) { return it->second; }
