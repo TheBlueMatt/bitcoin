@@ -2812,7 +2812,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 LOCK(cs_main);
                 mapBlockSource.emplace(pblock->GetHash(), std::make_pair(pfrom->GetId(), false));
             }
-            bool fNewBlock = false;
             // Setting fForceProcessing to true means that we bypass some of
             // our anti-DoS protections in AcceptBlock, which filters
             // unrequested blocks that might be trying to waste our resources
@@ -2823,7 +2822,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // compact blocks with less work than our tip, it is safe to treat
             // reconstructed compact blocks as having been requested.
             CValidationState dos_state;
-            ProcessNewBlock(chainparams, pblock, dos_state, /*fForceProcessing=*/true, &fNewBlock);
+            bool fNewBlock = ProcessNewBlock(chainparams, pblock, dos_state, /*fForceProcessing=*/true).get();
             if (fNewBlock && dos_state.IsValid()) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2908,7 +2907,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             }
         } // Don't hold cs_main when we call into ProcessNewBlock
         if (fBlockRead) {
-            bool fNewBlock = false;
             // Since we requested this block (it was in mapBlocksInFlight), force it to be processed,
             // even if it would not be a candidate for new tip (missing previous block, chain not long enough, etc)
             // This bypasses some anti-DoS logic in AcceptBlock (eg to prevent
@@ -2916,7 +2914,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // protections in the compact block handler -- see related comment
             // in compact block optimistic reconstruction handling.
             CValidationState dos_state;
-            ProcessNewBlock(chainparams, pblock, dos_state, /*fForceProcessing=*/true, &fNewBlock);
+            bool fNewBlock = ProcessNewBlock(chainparams, pblock, dos_state, /*fForceProcessing=*/true).get();
             if (fNewBlock && dos_state.IsValid()) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2980,9 +2978,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // so the race between here and cs_main in ProcessNewBlock is fine.
             mapBlockSource.emplace(hash, std::make_pair(pfrom->GetId(), true));
         }
-        bool fNewBlock = false;
         CValidationState dos_state;
-        ProcessNewBlock(chainparams, pblock, dos_state, forceProcessing, &fNewBlock);
+        bool fNewBlock = ProcessNewBlock(chainparams, pblock, dos_state, forceProcessing).get();
         if (fNewBlock && dos_state.IsValid()) {
             pfrom->nLastBlockTime = GetTime();
         } else {
