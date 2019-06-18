@@ -3554,15 +3554,12 @@ std::future<bool> CChainState::ProcessNewBlock(const CChainParams& chainparams, 
     bool fNewBlock = false;
 
     {
-        // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
-        // Therefore, the following critical section must include the CheckBlock() call as well.
-        LOCK(cs_main);
-
         // Ensure that CheckBlock() passes before calling AcceptBlock, as
         // belt-and-suspenders.
         bool ret = CheckBlock(*pblock, state, chainparams.GetConsensus());
         if (ret) {
             // Store to disk
+            LOCK(cs_main);
             ret = PreWriteCheckBlock(pblock, state, chainparams, nullptr, fForceProcessing, &fNewBlock);
         }
         if (!ret || !fNewBlock) {
