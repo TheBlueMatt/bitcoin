@@ -520,6 +520,16 @@ private:
      */
     mutable std::atomic<bool> m_cached_finished_ibd{false};
 
+    /** Lock for m_block_validation_queue */
+    CCriticalSection m_cs_block_validation_queue;
+    /** CV for m_block_validation_queue */
+    std::condition_variable_any m_cv_block_validation_queue;
+    /**
+     * Queue of blocks to validate
+     * tuple<block, force-processing, promise-to-complete>
+     */
+    std::list<std::tuple<std::shared_ptr<const CBlock>, bool, std::promise<bool>>> m_block_validation_queue;
+
 public:
     //! The current chain of blockheaders we consult and build on.
     //! @see CChain, CBlockIndex.
@@ -584,6 +594,12 @@ public:
 
     /** Check whether we are doing an initial block download (synchronizing from disk or network) */
     bool IsInitialBlockDownload() const;
+
+    /** Drain the block validation queue in a loop */
+    void ProcessBlockValidationQueue();
+
+    /** Push a new block to the block validation queue */
+    std::future<bool> ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, CValidationState& state, bool fForceProcessing);
 
 private:
     bool ActivateBestChainStep(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindexMostWork, const std::shared_ptr<const CBlock>& pblock, bool& fInvalidFound, ConnectTrace& connectTrace) EXCLUSIVE_LOCKS_REQUIRED(cs_main, ::mempool.cs);
