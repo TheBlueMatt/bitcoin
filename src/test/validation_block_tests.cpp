@@ -17,6 +17,7 @@
 #include <validationinterface.h>
 
 #include <thread>
+#include <stdio.h>
 
 struct RegtestingSetup : public TestingSetup {
     RegtestingSetup() : TestingSetup(CBaseChainParams::REGTEST) {}
@@ -143,6 +144,7 @@ void BuildChain(const uint256& root, int height, const unsigned int invalid_rate
 
 BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
 {
+fprintf(stderr, "so 1\n");
     // build a large-ish chain that's likely to have some forks
     std::vector<std::shared_ptr<const CBlock>> blocks;
     while (blocks.size() < 50) {
@@ -150,18 +152,22 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
         BuildChain(Params().GenesisBlock().GetHash(), 100, 15, 10, 500, blocks);
     }
 
+fprintf(stderr, "so 2\n");
     CValidationState state;
     std::vector<CBlockHeader> headers;
     std::transform(blocks.begin(), blocks.end(), std::back_inserter(headers), [](std::shared_ptr<const CBlock> b) { return b->GetBlockHeader(); });
 
     // Process all the headers so we understand the toplogy of the chain
     BOOST_CHECK(ProcessNewBlockHeaders(headers, state, Params()));
+fprintf(stderr, "so 3\n");
 
     // Connect the genesis block and drain any outstanding events
     CValidationState dos_state;
     ProcessNewBlock(Params(), std::make_shared<CBlock>(Params().GenesisBlock()), dos_state, true).wait();
+fprintf(stderr, "so 4\n");
     BOOST_CHECK(dos_state.IsValid());
     SyncWithValidationInterfaceQueue();
+fprintf(stderr, "so 5\n");
 
     // subscribe to events (this subscriber will validate event ordering)
     const CBlockIndex* initial_tip = nullptr;
@@ -169,15 +175,18 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
         LOCK(cs_main);
         initial_tip = ::ChainActive().Tip();
     }
+fprintf(stderr, "so 6\n");
     TestSubscriber sub(initial_tip->GetBlockHash());
     RegisterValidationInterface(&sub);
+fprintf(stderr, "so 7\n");
 
     // create a bunch of threads that repeatedly process a block generated above at random
     // this will create parallelism and randomness inside validation - the ValidationInterface
     // will subscribe to events generated during block validation and assert on ordering invariance
     std::vector<std::thread> threads;
     for (int i = 0; i < 10; i++) {
-        threads.emplace_back([&blocks]() {
+        threads.emplace_back([&blocks, i]() {
+fprintf(stderr, "so thread start\n");
             std::vector<std::future<bool>> thread_futures;
             FastRandomContext insecure;
             for (int i = 0; i < 1000; i++) {
@@ -194,23 +203,29 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
                     assert(dos_state.IsValid());
                 }
             }
+fprintf(stderr, "Thread %d now going into waiting...\n", i);
             for (std::future<bool>& future: thread_futures) {
                 future.wait();
             }
+fprintf(stderr, "Thread %d now done waiting.\n", i);
         });
     }
 
     for (auto& t : threads) {
         t.join();
     }
+fprintf(stderr, "Done joining all threads!");
     while (GetMainSignals().CallbacksPending() > 0) {
         MilliSleep(100);
     }
+fprintf(stderr, "All callbacks complete!");
 
     UnregisterValidationInterface(&sub);
+fprintf(stderr, "so 8\n");
 
     LOCK(cs_main);
     BOOST_CHECK_EQUAL(sub.m_expected_tip, ::ChainActive().Tip()->GetBlockHash());
+fprintf(stderr, "so 9\n");
 }
 
 /**
@@ -239,10 +254,13 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
         return dos_state.IsValid();
     };
 
+fprintf(stderr, "1\n");
     // Process all mined blocks
     BOOST_REQUIRE(ProcessBlock(std::make_shared<CBlock>(Params().GenesisBlock())));
+fprintf(stderr, "2\n");
     auto last_mined = GoodBlock(Params().GenesisBlock().GetHash());
     BOOST_REQUIRE(ProcessBlock(last_mined));
+fprintf(stderr, "3\n");
 
     // Run the test multiple times
     for (int test_runs = 3; test_runs > 0; --test_runs) {
@@ -267,11 +285,13 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
         }
 
         // Mature the inputs of the txs
+fprintf(stderr, "6\n");
         for (int j = COINBASE_MATURITY; j > 0; --j) {
             last_mined = GoodBlock(last_mined->GetHash());
             BOOST_REQUIRE(ProcessBlock(last_mined));
         }
 
+fprintf(stderr, "7\n");
         // Mine a reorg (and hold it back) before adding the txs to the mempool
         const uint256 tip_init{last_mined->GetHash()};
 
@@ -283,6 +303,7 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
             reorg.push_back(last_mined);
         }
 
+fprintf(stderr, "8\n");
         // Add the txs to the tx pool
         {
             LOCK(cs_main);
@@ -299,6 +320,7 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
                     /* nAbsurdFee */ 0));
             }
         }
+fprintf(stderr, "9\n");
 
         // Check that all txs are in the pool
         {
@@ -331,6 +353,7 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
             assert(tip_init != ::ChainActive().Tip()->GetBlockHash());
         }};
 
+fprintf(stderr, "10\n");
         // Submit the reorg in this thread to invalidate and remove the txs from the tx pool
         for (const auto& b : reorg) {
             ProcessBlock(b);
@@ -338,8 +361,10 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
         // Check that the reorg was eventually successful
         BOOST_CHECK_EQUAL(last_mined->GetHash(), ::ChainActive().Tip()->GetBlockHash());
 
+fprintf(stderr, "11\n");
         // We can join the other thread, which returns when the reorg was successful
         rpc_thread.join();
+fprintf(stderr, "12\n");
     }
 }
 BOOST_AUTO_TEST_SUITE_END()

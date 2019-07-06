@@ -44,7 +44,7 @@ set -o errtrace
 trap 'DOCKER_EXEC "cat ${TRAVIS_BUILD_DIR}/sanitizer-output/* 2> /dev/null"' ERR
 
 BEGIN_FOLD build
-DOCKER_EXEC make $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && DOCKER_EXEC make $GOAL V=1 ; false )
+DOCKER_EXEC make $MAKEJOBS $GOAL V=1 || ( echo "Build failure. Verbose build follows." && DOCKER_EXEC make $GOAL V=1 ; false )
 END_FOLD
 
 cd ${TRAVIS_BUILD_DIR} || (echo "could not enter travis build dir $TRAVIS_BUILD_DIR"; exit 1)

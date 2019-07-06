@@ -111,17 +111,26 @@ TestingSetup::~TestingSetup()
     // If eg the block connection thread is waiting on the queue to drain,
     // killing the scheduler thread now will hang us, so wait on the queue
     // to drain first.
+fprintf(stderr, "TS S 1\n");
     SyncWithValidationInterfaceQueue();
+fprintf(stderr, "TS S 2\n");
     threadGroup.interrupt_all();
     threadGroup.join_all();
+fprintf(stderr, "TS S 3\n");
     GetMainSignals().FlushBackgroundCallbacks();
+fprintf(stderr, "TS S 4\n");
     GetMainSignals().UnregisterBackgroundSignalScheduler();
+fprintf(stderr, "TS S 5\n");
     g_connman.reset();
+fprintf(stderr, "TS S 6\n");
     g_banman.reset();
+fprintf(stderr, "TS S 7\n");
     UnloadBlockIndex();
+fprintf(stderr, "TS S 8\n");
     pcoinsTip.reset();
     pcoinsdbview.reset();
     pblocktree.reset();
+fprintf(stderr, "TS S 9\n");
 }
 
 TestChain100Setup::TestChain100Setup() : TestingSetup(CBaseChainParams::REGTEST)

@@ -3503,9 +3503,8 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
 
 void CChainState::ProcessBlockValidationQueue()
 {
+try {
     while (true) {
-        LimitValidationInterfaceQueue();
-
         std::shared_ptr<const CBlock> pblock;
         bool fForceProcessing;
         std::promise<bool> result_promise;
@@ -3514,10 +3513,12 @@ void CChainState::ProcessBlockValidationQueue()
             if (m_block_validation_queue.empty()) {
                 m_cv_block_validation_queue.wait_for(lock, std::chrono::seconds(1));
             }
+fprintf(stderr, "cv woke\n");
             if (ShutdownRequested())
                 break;
             boost::this_thread::interruption_point();
             if (m_block_validation_queue.empty()) {
+fprintf(stderr, "queue empty, going again\n");
                 continue;
             }
 
@@ -3527,6 +3528,7 @@ void CChainState::ProcessBlockValidationQueue()
             result_promise = std::move(std::get<2>(tuple));
             m_block_validation_queue.pop_front();
         }
+fprintf(stderr, "HAVE BLOCK!\n");
 
         CChainParams chainparams = Params();
         {
@@ -3570,16 +3572,24 @@ void CChainState::ProcessBlockValidationQueue()
                 continue;
             }
         }
+fprintf(stderr, "Stored block!\n");
 
         NotifyHeaderTip();
 
         CValidationState state; // Only used to report errors, not invalidity - ignore it
         if (!::ChainstateActive().ActivateBestChain(state, chainparams, pblock))
             error("%s: ActivateBestChain failed (%s)", __func__, FormatStateMessage(state));
+fprintf(stderr, "Activated best chain!\n");
+
+        GetMainSignals().BlockProcessed();
+        LimitValidationInterfaceQueue();
+fprintf(stderr, "LVIQ Done\n");
 
         result_promise.set_value(true);
-        GetMainSignals().BlockProcessed();
     }
+} catch (...) {
+	fprintf(stderr, "PBVQ Exit catch\n!");
+}
 }
 
 std::future<bool> CChainState::ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, CValidationState& state, bool fForceProcessing)

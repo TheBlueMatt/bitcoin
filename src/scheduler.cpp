@@ -82,6 +82,7 @@ void CScheduler::serviceQueue()
                 f();
             }
         } catch (...) {
+fprintf(stderr, "scheduler catch exit!\n");
             --nThreadsServicingQueue;
             throw;
         }

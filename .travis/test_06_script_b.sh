@@ -10,7 +10,10 @@ cd "build/bitcoin-$HOST" || (echo "could not enter distdir build/bitcoin-$HOST";
 
 if [ "$RUN_UNIT_TESTS" = "true" ]; then
   BEGIN_FOLD unit-tests
-  DOCKER_EXEC LD_LIBRARY_PATH=$TRAVIS_BUILD_DIR/depends/$HOST/lib make $MAKEJOBS check VERBOSE=1
+  DOCKER_EXEC LD_LIBRARY_PATH=$TRAVIS_BUILD_DIR/depends/$HOST/lib make $MAKEJOBS check VERBOSE=1 &
+  sleep 300
+  DOCKER_EXEC cat src/test/*.log
+  exit 1
   END_FOLD
 fi
 
