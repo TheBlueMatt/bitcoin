@@ -5,6 +5,8 @@
 
 #include <chain.h>
 
+RecursiveMutex cs_blockindex;
+
 /**
  * CChain implementation
  */

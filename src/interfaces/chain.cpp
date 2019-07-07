@@ -89,6 +89,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     bool haveBlockOnDisk(int height) override
     {
         LockAssertion lock(::cs_main);
+        LockAssertion lock2(::cs_blockindex);
         CBlockIndex* block = ::ChainActive()[height];
         return block && ((block->nStatus & BLOCK_HAVE_DATA) != 0) && block->nTx > 0;
     }

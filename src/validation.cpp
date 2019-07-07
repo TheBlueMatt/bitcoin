@@ -2856,6 +2856,8 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
 /** Mark a block as having its data received and checked (up to BLOCK_VALID_TRANSACTIONS). */
 void CChainState::ReceivedBlockTransactions(const CBlock& block, CBlockIndex* pindexNew, const FlatFilePos& pos, const Consensus::Params& consensusParams)
 {
+    LOCK(cs_blockindex);
+
     pindexNew->nTx = block.vtx.size();
     pindexNew->nChainTx = 0;
     pindexNew->nFile = pos.nFile;
@@ -3390,6 +3392,7 @@ static FlatFilePos SaveBlockToDisk(const CBlock& block, int nHeight, const CChai
 bool CChainState::ShouldMaybeWrite(CBlockIndex* pindex, bool fRequested)
 {
     AssertLockHeld(cs_main);
+    LOCK(cs_blockindex);
 
     // Try to process all requested blocks that we don't have, but only
     // process an unrequested block if it's new and has enough work to
@@ -3929,7 +3932,7 @@ void BlockManager::Unload() {
     m_block_index.clear();
 }
 
-bool static LoadBlockIndexDB(const CChainParams& chainparams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+bool static LoadBlockIndexDB(const CChainParams& chainparams) EXCLUSIVE_LOCKS_REQUIRED(cs_main, cs_blockindex)
 {
     if (!g_blockman.LoadBlockIndex(
             chainparams.GetConsensus(), *pblocktree, ::ChainstateActive().setBlockIndexCandidates))
@@ -4251,7 +4254,7 @@ bool CChainState::RewindBlockIndex(const CChainParams& params)
     // as this can we done without costly DisconnectTip calls. Active
     // blocks will be dealt with below (releasing cs_main in between).
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         for (const auto& entry : m_blockman.m_block_index) {
             if (IsWitnessEnabled(entry.second->pprev, params.GetConsensus()) && !(entry.second->nStatus & BLOCK_OPT_WITNESS) && !m_chain.Contains(entry.second)) {
                 EraseBlockData(entry.second);
@@ -4283,6 +4286,7 @@ bool CChainState::RewindBlockIndex(const CChainParams& params)
     while (!ShutdownRequested()) {
         {
             LOCK2(cs_main, ::mempool.cs);
+            LOCK(cs_blockindex);
             // Make sure nothing changed from under us (this won't happen because RewindBlockIndex runs before importing/network are active)
             assert(tip == m_chain.Tip());
             if (tip == nullptr || tip->nHeight < nHeight) break;
@@ -4565,7 +4569,7 @@ void CChainState::CheckBlockIndex(const Consensus::Params& consensusParams)
         return;
     }
 
-    LOCK(cs_main);
+    LOCK2(cs_main, cs_blockindex);
 
     // During a reindex, we read the genesis block and call CheckBlockIndex before ActivateBestChain,
     // so we have the genesis block in m_blockman.m_block_index but no active chain. (A few of the

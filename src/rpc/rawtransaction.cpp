@@ -330,6 +330,7 @@ static UniValue verifytxoutproof(const JSONRPCRequest& request)
         return res;
 
     LOCK(cs_main);
+    LOCK(cs_blockindex);
 
     const CBlockIndex* pindex = LookupBlockIndex(merkleBlock.header.GetHash());
     if (!pindex || !::ChainActive().Contains(pindex) || pindex->nTx == 0) {

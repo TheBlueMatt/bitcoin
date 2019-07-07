@@ -211,6 +211,7 @@ static bool rest_block(HTTPRequest* req,
     {
         LOCK(cs_main);
         tip = ::ChainActive().Tip();
+        LOCK(cs_blockindex);
         pblockindex = LookupBlockIndex(hash);
         if (!pblockindex) {
             return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");

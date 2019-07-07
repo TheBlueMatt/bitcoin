@@ -2709,6 +2709,7 @@ bool static ProcessMessage(CNode* pfrom, CPeerState* peerstate, const std::strin
 
         {
         LOCK(cs_main);
+        LOCK(cs_blockindex);
 
         if (!LookupBlockIndex(cmpctblock.header.hashPrevBlock)) {
             // Doesn't connect (or is genesis), instead of DoSing in AcceptBlockHeader, request deeper headers
@@ -2749,6 +2750,7 @@ bool static ProcessMessage(CNode* pfrom, CPeerState* peerstate, const std::strin
 
         {
         LOCK2(cs_main, g_cs_orphans);
+        LOCK(cs_blockindex);
         // If AcceptBlockHeader returned true, it set pindex
         assert(pindex);
         UpdateBlockAvailability(pfrom->GetId(), pindex->GetBlockHash());

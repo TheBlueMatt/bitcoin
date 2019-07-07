@@ -10,6 +10,7 @@
 #include <consensus/params.h>
 #include <flatfile.h>
 #include <primitives/block.h>
+#include <sync.h>
 #include <tinyformat.h>
 #include <uint256.h>
 
@@ -131,6 +132,17 @@ enum BlockStatus: uint32_t {
     BLOCK_OPT_WITNESS       =   128, //!< block data in blk*.data was received with a witness-enforcing client
 };
 
+extern RecursiveMutex cs_main;
+
+/**
+ * Read mutex for mapBlockIndex and mutable CBlockIndex data.
+ * Note that this does *not* allow writing to such data, as other invariants must be held
+ * with other consensus data, and thus cs_main is required for any writes. However, because
+ * there is a lot of contention on reading such data, having a separate mutex for it helps
+ * a lot.
+ */
+extern RecursiveMutex cs_blockindex ACQUIRED_AFTER(cs_main);
+
 /** The block chain is a tree shaped structure starting with the
  * genesis block at the root, with each block potentially having multiple
  * candidates to be the next block. A blockindex may have multiple pprev pointing
@@ -165,7 +177,7 @@ public:
 
     //! Number of transactions in this block.
     //! Note: in a potential headers-first mode, this number cannot be relied upon
-    unsigned int nTx;
+    unsigned int nTx GUARDED_BY(cs_blockindex);
 
     //! (memory only) Number of transactions in the chain up to and including this block.
     //! This value will be non-zero only if and only if transactions for this block and all its parents are available.
@@ -188,7 +200,9 @@ public:
     //! (memory only) Maximum nTime in the chain up to and including this block.
     unsigned int nTimeMax;
 
-    void SetNull()
+private:
+    //! May only be used in constructors (as it doesn't require locking)
+    void SetNull() NO_THREAD_SAFETY_ANALYSIS
     {
         phashBlock = nullptr;
         pprev = nullptr;
@@ -211,6 +225,7 @@ public:
         nNonce         = 0;
     }
 
+public:
     CBlockIndex()
     {
         SetNull();

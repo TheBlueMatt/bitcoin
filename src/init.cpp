@@ -1468,7 +1468,7 @@ bool AppInitMain(InitInterfaces& interfaces)
             const int64_t load_block_index_start_time = GetTimeMillis();
             bool is_coinsview_empty;
             try {
-                LOCK(cs_main);
+                LOCK2(cs_main, cs_blockindex);
                 UnloadBlockIndex();
                 pcoinsTip.reset();
                 pcoinsdbview.reset();
