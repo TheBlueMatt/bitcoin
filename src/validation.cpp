@@ -969,7 +969,7 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus
 {
     FlatFilePos blockPos;
     {
-        LOCK(cs_main);
+        LOCK(cs_blockindex);
         blockPos = pindex->GetBlockPos();
     }
 
@@ -977,7 +977,7 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus
         return false;
     if (block.GetHash() != pindex->GetBlockHash())
         return error("ReadBlockFromDisk(CBlock&, CBlockIndex*): GetHash() doesn't match index for %s at %s",
-                pindex->ToString(), pindex->GetBlockPos().ToString());
+                pindex->ToString(), blockPos.ToString());
     return true;
 }
 
@@ -1020,7 +1020,7 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
 {
     FlatFilePos block_pos;
     {
-        LOCK(cs_main);
+        LOCK(cs_blockindex);
         block_pos = pindex->GetBlockPos();
     }
 
@@ -1374,7 +1374,11 @@ static bool UndoWriteToDisk(const CBlockUndo& blockundo, FlatFilePos& pos, const
 
 bool UndoReadFromDisk(CBlockUndo& blockundo, const CBlockIndex* pindex)
 {
-    FlatFilePos pos = pindex->GetUndoPos();
+    FlatFilePos pos;
+    {
+        LOCK(cs_blockindex);
+        pos = pindex->GetUndoPos();
+    }
     if (pos.IsNull()) {
         return error("%s: no undo data available", __func__);
     }
@@ -1533,7 +1537,7 @@ void static FlushBlockFile(bool fFinalize = false)
 
 static bool FindUndoPos(CValidationState &state, int nFile, FlatFilePos &pos, unsigned int nAddSize);
 
-static bool WriteUndoDataForBlock(const CBlockUndo& blockundo, CValidationState& state, CBlockIndex* pindex, const CChainParams& chainparams)
+static bool WriteUndoDataForBlock(const CBlockUndo& blockundo, CValidationState& state, CBlockIndex* pindex, const CChainParams& chainparams) EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex)
 {
     // Write undo information to disk
     if (pindex->GetUndoPos().IsNull()) {
@@ -1951,6 +1955,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 
     if (fJustCheck)
         return true;
+
+    LOCK(cs_blockindex);
 
     if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams))
         return false;
@@ -3680,7 +3686,7 @@ uint64_t CalculateCurrentUsage()
 /* Prune a block file (modify associated database entries)*/
 void PruneOneBlockFile(const int fileNumber)
 {
-    LOCK(cs_LastBlockFile);
+    LOCK2(cs_LastBlockFile, cs_blockindex);
 
     for (const auto& entry : g_blockman.m_block_index) {
         CBlockIndex* pindex = entry.second;
@@ -4025,7 +4031,7 @@ CVerifyDB::~CVerifyDB()
 
 bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview, int nCheckLevel, int nCheckDepth)
 {
-    LOCK(cs_main);
+    LOCK2(cs_main, cs_blockindex);
     if (::ChainActive().Tip() == nullptr || ::ChainActive().Tip()->pprev == nullptr)
         return true;
 

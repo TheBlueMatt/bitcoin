@@ -164,13 +164,13 @@ public:
     int nHeight;
 
     //! Which # file this block is stored in (blk?????.dat)
-    int nFile;
+    int nFile GUARDED_BY(cs_blockindex);
 
     //! Byte offset within blk?????.dat where this block's data is stored
-    unsigned int nDataPos;
+    unsigned int nDataPos GUARDED_BY(cs_blockindex);
 
     //! Byte offset within rev?????.dat where this block's undo data is stored
-    unsigned int nUndoPos;
+    unsigned int nUndoPos GUARDED_BY(cs_blockindex);
 
     //! (memory only) Total amount of work (expected number of hashes) in the chain up to and including this block
     arith_uint256 nChainWork;
@@ -242,7 +242,7 @@ public:
         nNonce         = block.nNonce;
     }
 
-    FlatFilePos GetBlockPos() const {
+    FlatFilePos GetBlockPos() const EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex) {
         FlatFilePos ret;
         if (nStatus & BLOCK_HAVE_DATA) {
             ret.nFile = nFile;
@@ -251,7 +251,7 @@ public:
         return ret;
     }
 
-    FlatFilePos GetUndoPos() const {
+    FlatFilePos GetUndoPos() const EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex) {
         FlatFilePos ret;
         if (nStatus & BLOCK_HAVE_UNDO) {
             ret.nFile = nFile;

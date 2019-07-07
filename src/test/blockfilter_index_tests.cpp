@@ -21,6 +21,7 @@ static bool ComputeFilter(BlockFilterType filter_type, const CBlockIndex* block_
                           BlockFilter& filter)
 {
     CBlock block;
+    LOCK(cs_blockindex);
     if (!ReadBlockFromDisk(block, block_index->GetBlockPos(), Params().GetConsensus())) {
         return false;
     }
