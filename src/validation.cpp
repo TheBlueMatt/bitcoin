@@ -2158,6 +2158,7 @@ void static UpdateTip(const CBlockIndex *pindexNew, const CChainParams& chainPar
         if (nUpgraded > 0)
             AppendWarning(warningMessages, strprintf(_("%d of last 100 blocks have unexpected version").translated, nUpgraded));
     }
+    LOCK(cs_blockindex);
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8g tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__, /* Continued */
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight, pindexNew->nVersion,
       log(pindexNew->nChainWork.getdouble())/log(2.0), (unsigned long)pindexNew->nChainTx,
@@ -2359,6 +2360,8 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
  * known to be invalid (it's however far from certain to be valid).
  */
 CBlockIndex* CChainState::FindMostWorkChain() {
+    LOCK(cs_blockindex);
+
     do {
         CBlockIndex *pindexNew = nullptr;
 
@@ -2660,7 +2663,7 @@ bool ActivateBestChain(CValidationState &state, const CChainParams& chainparams,
 bool CChainState::PreciousBlock(CValidationState& state, const CChainParams& params, CBlockIndex *pindex)
 {
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         if (pindex->nChainWork < m_chain.Tip()->nChainWork) {
             // Nothing to do, this block is not at the tip.
             return true;
@@ -2749,6 +2752,7 @@ bool CChainState::InvalidateBlock(CValidationState& state, const CChainParams& c
             return false;
         }
 
+        LOCK(cs_blockindex);
         // Mark pindex (or the last disconnected block) as invalid, even when it never was in the main chain
         to_mark_failed->nStatus |= BLOCK_FAILED_VALID;
         setDirtyBlockIndex.insert(to_mark_failed);

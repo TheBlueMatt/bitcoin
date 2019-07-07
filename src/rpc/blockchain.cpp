@@ -1321,7 +1321,7 @@ UniValue getblockchaininfo(const JSONRPCRequest& request)
                 },
             }.Check(request);
 
-    LOCK(cs_main);
+    LOCK2(cs_main, cs_blockindex);
 
     const CBlockIndex* tip = ::ChainActive().Tip();
     UniValue obj(UniValue::VOBJ);
@@ -1418,7 +1418,7 @@ static UniValue getchaintips(const JSONRPCRequest& request)
                 },
             }.Check(request);
 
-    LOCK(cs_main);
+    LOCK2(cs_main, cs_blockindex);
 
     /*
      * Idea:  the set of chain tips is ::ChainActive().tip, plus orphan blocks which do not have another orphan building off of them.
@@ -1623,7 +1623,7 @@ static UniValue reconsiderblock(const JSONRPCRequest& request)
     uint256 hash(ParseHashV(request.params[0], "blockhash"));
 
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         CBlockIndex* pblockindex = LookupBlockIndex(hash);
         if (!pblockindex) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
@@ -1699,6 +1699,8 @@ static UniValue getchaintxstats(const JSONRPCRequest& request)
 
     const CBlockIndex* pindexPast = pindex->GetAncestor(pindex->nHeight - blockcount);
     int nTimeDiff = pindex->GetMedianTimePast() - pindexPast->GetMedianTimePast();
+
+    LOCK(cs_blockindex);
     int nTxDiff = pindex->nChainTx - pindexPast->nChainTx;
 
     UniValue ret(UniValue::VOBJ);

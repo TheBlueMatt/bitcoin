@@ -182,7 +182,7 @@ public:
     //! (memory only) Number of transactions in the chain up to and including this block.
     //! This value will be non-zero only if and only if transactions for this block and all its parents are available.
     //! Change to 64-bit type when necessary; won't happen before 2030
-    unsigned int nChainTx;
+    unsigned int nChainTx GUARDED_BY(cs_blockindex);
 
     //! Verification status of this block. See enum BlockStatus
     uint32_t nStatus;
@@ -285,7 +285,7 @@ public:
      * Does not imply the transactions are consensus-valid (ConnectTip might fail)
      * Does not imply the transactions are still stored on disk. (IsBlockPruned might return true)
      */
-    bool HaveTxsDownloaded() const { return nChainTx != 0; }
+    bool HaveTxsDownloaded() const EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex) { return nChainTx != 0; }
 
     int64_t GetBlockTime() const
     {

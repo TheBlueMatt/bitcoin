@@ -273,7 +273,7 @@ public:
     void findCoins(std::map<COutPoint, Coin>& coins) override { return FindCoins(coins); }
     double guessVerificationProgress(const uint256& block_hash) override
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         return GuessVerificationProgress(Params().TxData(), LookupBlockIndex(block_hash));
     }
     RBFTransactionState isRBFOptIn(const CTransaction& tx) override
