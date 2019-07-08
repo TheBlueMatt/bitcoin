@@ -1476,8 +1476,16 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
         }
     }
 
-    LOCK2(cs_main, cs_blockindex);
-    const CBlockIndex* pindex = LookupBlockIndex(inv.hash);
+    const CBlockIndex *pindex, *chain_tip;
+    bool fPeerWantsWitness;
+    bool can_direct_fetch;
+    {
+        LOCK(cs_main);
+        pindex = LookupBlockIndex(inv.hash);
+        chain_tip = ::ChainActive().Tip();
+        fPeerWantsWitness = State(pfrom->GetId())->fWantsCmpctWitness;
+        can_direct_fetch = CanDirectFetch(consensusParams);
+    }
     if (pindex) {
         send = BlockRequestAllowed(pindex, consensusParams);
         if (!send) {
@@ -1497,7 +1505,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
     }
     // Avoid leaking prune-height by never sending blocks below the NODE_NETWORK_LIMITED threshold
     if (send && !pfrom->HasPermission(PF_NOBAN) && (
-            (((pfrom->GetLocalServices() & NODE_NETWORK_LIMITED) == NODE_NETWORK_LIMITED) && ((pfrom->GetLocalServices() & NODE_NETWORK) != NODE_NETWORK) && (::ChainActive().Tip()->nHeight - pindex->nHeight > (int)NODE_NETWORK_LIMITED_MIN_BLOCKS + 2 /* add two blocks buffer extension for possible races */) )
+            (((pfrom->GetLocalServices() & NODE_NETWORK_LIMITED) == NODE_NETWORK_LIMITED) && ((pfrom->GetLocalServices() & NODE_NETWORK) != NODE_NETWORK) && (chain_tip->nHeight - pindex->nHeight > (int)NODE_NETWORK_LIMITED_MIN_BLOCKS + 2 /* add two blocks buffer extension for possible races */) )
        )) {
         LogPrint(BCLog::NET, "Ignore block request below NODE_NETWORK_LIMITED threshold from peer=%d\n", pfrom->GetId());
 
@@ -1507,7 +1515,11 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
     }
     // Pruned nodes may have deleted the block, so check whether
     // it's available before trying to send.
-    if (send && (pindex->nStatus & BLOCK_HAVE_DATA))
+    {
+        LOCK(cs_blockindex);
+        send = send && (pindex->nStatus & BLOCK_HAVE_DATA);
+    }
+    if (send)
     {
         std::shared_ptr<const CBlock> pblock;
         if (a_recent_block && a_recent_block->GetHash() == pindex->GetBlockHash()) {
@@ -1517,7 +1529,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
             // as the network format matches the format on disk
             std::vector<uint8_t> block_data;
             if (!ReadRawBlockFromDisk(block_data, pindex, chainparams.MessageStart())) {
-                assert(!"cannot load block from disk");
+                return; // Block was pruned before we could read
             }
             connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::BLOCK, MakeSpan(block_data)));
             // Don't set pblock as we've sent the block
@@ -1525,7 +1537,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
             // Send block from disk
             std::shared_ptr<CBlock> pblockRead = std::make_shared<CBlock>();
             if (!ReadBlockFromDisk(*pblockRead, pindex, consensusParams))
-                assert(!"cannot load block from disk");
+                return; // Block was pruned before we could read
             pblock = pblockRead;
         }
         if (pblock) {
@@ -1565,9 +1577,8 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
                 // they won't have a useful mempool to match against a compact block,
                 // and we don't feel like constructing the object for them, so
                 // instead we respond with the full, non-compact block.
-                bool fPeerWantsWitness = State(pfrom->GetId())->fWantsCmpctWitness;
                 int nSendFlags = fPeerWantsWitness ? 0 : SERIALIZE_TRANSACTION_NO_WITNESS;
-                if (CanDirectFetch(consensusParams) && pindex->nHeight >= ::ChainActive().Height() - MAX_CMPCTBLOCK_DEPTH) {
+                if (can_direct_fetch && pindex->nHeight >= ::ChainActive().Height() - MAX_CMPCTBLOCK_DEPTH) {
                     if ((fPeerWantsWitness || !fWitnessesPresentInARecentCompactBlock) && a_recent_compact_block && a_recent_compact_block->header.GetHash() == pindex->GetBlockHash()) {
                         connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::CMPCTBLOCK, *a_recent_compact_block));
                     } else {
@@ -1587,7 +1598,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
             // and we want it right after the last block so they don't
             // wait for other stuff first.
             std::vector<CInv> vInv;
-            vInv.push_back(CInv(MSG_BLOCK, ::ChainActive().Tip()->GetBlockHash()));
+            vInv.push_back(CInv(MSG_BLOCK, chain_tip->GetBlockHash()));
             connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::INV, vInv));
             pfrom->hashContinue.SetNull();
         }
