@@ -1040,6 +1040,7 @@ static UniValue pruneblockchain(const JSONRPCRequest& request)
     PruneBlockFilesManual(height);
     const CBlockIndex* block = ::ChainActive().Tip();
     assert(block);
+    LOCK(cs_blockindex);
     while (block->pprev && (block->pprev->nStatus & BLOCK_HAVE_DATA)) {
         block = block->pprev;
     }
@@ -2287,7 +2288,7 @@ static UniValue getblockfilter(const JSONRPCRequest& request)
     const CBlockIndex* block_index;
     bool block_was_connected;
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         block_index = LookupBlockIndex(block_hash);
         if (!block_index) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");

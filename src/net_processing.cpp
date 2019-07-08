@@ -1152,13 +1152,18 @@ static bool MaybePunishNode(NodeId nodeid, const CValidationState& state, bool v
 // active chain if they are no more than a month older (both in time, and in
 // best equivalent proof of work) than the best header chain we know about and
 // we fully-validated them at some point.
-static bool BlockRequestAllowed(const CBlockIndex* pindex, const Consensus::Params& consensusParams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+static bool BlockRequestAllowed(const CBlockIndex* pindex, const Consensus::Params& consensusParams)
 {
-    AssertLockHeld(cs_main);
-    if (::ChainActive().Contains(pindex)) return true;
-    return pindex->IsValid(BLOCK_VALID_SCRIPTS) && (pindexBestHeader != nullptr) &&
-        (pindexBestHeader->GetBlockTime() - pindex->GetBlockTime() < STALE_RELAY_AGE_LIMIT) &&
-        (GetBlockProofEquivalentTime(*pindexBestHeader, *pindex, *pindexBestHeader, consensusParams) < STALE_RELAY_AGE_LIMIT);
+    {
+        LOCK(cs_blockindex);
+        if (pindex->IsValid(BLOCK_VALID_SCRIPTS) && (pindexBestHeader != nullptr) &&
+            (pindexBestHeader->GetBlockTime() - pindex->GetBlockTime() < STALE_RELAY_AGE_LIMIT) &&
+            (GetBlockProofEquivalentTime(*pindexBestHeader, *pindex, *pindexBestHeader, consensusParams) < STALE_RELAY_AGE_LIMIT)) {
+            return true;
+        }
+    }
+    LOCK(cs_main);
+    return ::ChainActive().Contains(pindex);
 }
 
 PeerLogicValidation::PeerLogicValidation(CConnman* connmanIn, BanMan* banman, CScheduler &scheduler, bool enable_bip61)
@@ -1471,7 +1476,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
         }
     }
 
-    LOCK(cs_main);
+    LOCK2(cs_main, cs_blockindex);
     const CBlockIndex* pindex = LookupBlockIndex(inv.hash);
     if (pindex) {
         send = BlockRequestAllowed(pindex, consensusParams);
@@ -1757,7 +1762,7 @@ bool static ProcessHeadersMessage(CNode *pfrom, CPeerState* peerstate, CConnman 
     }
 
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         CNodeState *nodestate = State(pfrom->GetId());
         if (nodestate->nUnconnectingHeaders > 0) {
             LogPrint(BCLog::NET, "peer=%d: resetting nUnconnectingHeaders (%d -> 0)\n", pfrom->GetId(), nodestate->nUnconnectingHeaders);
@@ -2391,7 +2396,7 @@ bool static ProcessMessage(CNode* pfrom, CPeerState* peerstate, const std::strin
             }
         }
 
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
 
         // Find the last block the caller has in the main chain
         const CBlockIndex* pindex = FindForkInGlobalIndex(::ChainActive(), locator);
@@ -2445,7 +2450,7 @@ bool static ProcessMessage(CNode* pfrom, CPeerState* peerstate, const std::strin
             return true;
         }
 
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
 
         const CBlockIndex* pindex = LookupBlockIndex(req.blockhash);
         if (!pindex || !(pindex->nStatus & BLOCK_HAVE_DATA)) {

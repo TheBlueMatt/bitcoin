@@ -185,7 +185,7 @@ public:
     unsigned int nChainTx GUARDED_BY(cs_blockindex);
 
     //! Verification status of this block. See enum BlockStatus
-    uint32_t nStatus;
+    uint32_t nStatus GUARDED_BY(cs_blockindex);
 
     //! block header
     int32_t nVersion;
@@ -322,7 +322,7 @@ public:
     }
 
     //! Check whether this block index entry is valid up to the passed validity level.
-    bool IsValid(enum BlockStatus nUpTo = BLOCK_VALID_TRANSACTIONS) const
+    bool IsValid(enum BlockStatus nUpTo = BLOCK_VALID_TRANSACTIONS) const EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex)
     {
         assert(!(nUpTo & ~BLOCK_VALID_MASK)); // Only validity flags allowed.
         if (nStatus & BLOCK_FAILED_MASK)
@@ -332,7 +332,7 @@ public:
 
     //! Raise the validity level of this block index entry.
     //! Returns true if the validity was changed.
-    bool RaiseValidity(enum BlockStatus nUpTo)
+    bool RaiseValidity(enum BlockStatus nUpTo) EXCLUSIVE_LOCKS_REQUIRED(cs_blockindex, cs_main)
     {
         assert(!(nUpTo & ~BLOCK_VALID_MASK)); // Only validity flags allowed.
         if (nStatus & BLOCK_FAILED_MASK)
@@ -375,8 +375,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
+    // Serialization requires cs_blockindex, but ADD_SERIALIZE_METHODS doesn't (yet) support lock annotations
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action) NO_THREAD_SAFETY_ANALYSIS {
         int _nVersion = s.GetVersion();
         if (!(s.GetType() & SER_GETHASH))
             READWRITE(VARINT(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));

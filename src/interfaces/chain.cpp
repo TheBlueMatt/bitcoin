@@ -106,6 +106,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     Optional<int> findPruned(int start_height, Optional<int> stop_height) override
     {
         LockAssertion lock(::cs_main);
+        LockAssertion lock2(::cs_blockindex);
         if (::fPruneMode) {
             CBlockIndex* block = stop_height ? ::ChainActive()[*stop_height] : ::ChainActive().Tip();
             while (block && block->nHeight >= start_height) {

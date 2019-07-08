@@ -1186,6 +1186,7 @@ void static InvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(c
 
 void CChainState::InvalidBlockFound(CBlockIndex *pindex, const CValidationState &state) {
     if (state.GetReason() != ValidationInvalidReason::BLOCK_MUTATED) {
+        LOCK(cs_blockindex);
         pindex->nStatus |= BLOCK_FAILED_VALID;
         m_blockman.m_failed_blocks.insert(pindex);
         setDirtyBlockIndex.insert(pindex);
@@ -2711,7 +2712,7 @@ bool CChainState::InvalidateBlock(CValidationState& state, const CChainParams& c
         // Make sure the queue of validation callbacks doesn't grow unboundedly.
         LimitValidationInterfaceQueue();
 
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         LOCK(::mempool.cs); // Lock for as long as disconnectpool is in scope to make sure UpdateMempoolForReorg is called after DisconnectTip without unlocking in between
         if (!m_chain.Contains(pindex)) break;
         pindex_was_in_chain = true;
@@ -2830,6 +2831,7 @@ void ResetBlockFailureFlags(CBlockIndex *pindex) {
 CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
 {
     AssertLockHeld(cs_main);
+    LOCK(cs_blockindex);
 
     // Check for duplicate
     uint256 hash = block.GetHash();
@@ -3282,22 +3284,26 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, CValidationState
     AssertLockHeld(cs_main);
     // Check for duplicate
     uint256 hash = block.GetHash();
-    BlockMap::iterator miSelf = m_block_index.find(hash);
     CBlockIndex *pindex = nullptr;
     if (hash != chainparams.GetConsensus().hashGenesisBlock) {
-        if (miSelf != m_block_index.end()) {
-            // Block header is already known.
-            pindex = miSelf->second;
-            if (ppindex)
-                *ppindex = pindex;
-            if (pindex->nStatus & BLOCK_FAILED_MASK)
-                return state.Invalid(ValidationInvalidReason::CACHED_INVALID, error("%s: block %s is marked invalid", __func__, hash.ToString()), 0, "duplicate");
-            return true;
+        {
+            LOCK(cs_blockindex);
+            BlockMap::iterator miSelf = m_block_index.find(hash);
+            if (miSelf != m_block_index.end()) {
+                // Block header is already known.
+                pindex = miSelf->second;
+                if (ppindex)
+                    *ppindex = pindex;
+                if (pindex->nStatus & BLOCK_FAILED_MASK)
+                    return state.Invalid(ValidationInvalidReason::CACHED_INVALID, error("%s: block %s is marked invalid", __func__, hash.ToString()), 0, "duplicate");
+                return true;
+            }
         }
 
         if (!CheckBlockHeader(block, state, chainparams.GetConsensus()))
             return error("%s: Consensus::CheckBlockHeader: %s, %s", __func__, hash.ToString(), FormatStateMessage(state));
 
+        LOCK(cs_blockindex);
         // Get prev block index
         CBlockIndex* pindexPrev = nullptr;
         BlockMap::iterator mi = m_block_index.find(block.hashPrevBlock);
@@ -3462,6 +3468,7 @@ bool CChainState::PreWriteCheckBlock(const std::shared_ptr<const CBlock>& pblock
         !ContextualCheckBlock(block, state, chainparams.GetConsensus(), pindex->pprev)) {
         assert(IsBlockReason(state.GetReason()));
         if (state.IsInvalid() && state.GetReason() != ValidationInvalidReason::BLOCK_MUTATED) {
+            LOCK(cs_blockindex);
             pindex->nStatus |= BLOCK_FAILED_VALID;
             setDirtyBlockIndex.insert(pindex);
         }
@@ -4276,7 +4283,7 @@ bool CChainState::RewindBlockIndex(const CChainParams& params)
     CBlockIndex *tip;
     int nHeight = 1;
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         while (nHeight <= m_chain.Height()) {
             // Although SCRIPT_VERIFY_WITNESS is now generally enforced on all
             // blocks in ConnectBlock, we don't need to go back and
@@ -4511,7 +4518,12 @@ bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, FlatFi
 
                     // process in case the block isn't known yet
                     CBlockIndex* pindex = LookupBlockIndex(hash);
-                    if (!pindex || (pindex->nStatus & BLOCK_HAVE_DATA) == 0) {
+                    bool should_accept;
+                    {
+                        LOCK(cs_blockindex);
+                        should_accept = !pindex || (pindex->nStatus & BLOCK_HAVE_DATA) == 0;
+                    }
+                    if (should_accept) {
                       CValidationState state;
                       if (::ChainstateActive().AcceptBlock(pblock, state, chainparams, nullptr, true, dbp, nullptr)) {
                           nLoaded++;

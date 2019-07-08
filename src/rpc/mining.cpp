@@ -390,13 +390,17 @@ static UniValue getblocktemplate(const JSONRPCRequest& request)
                 throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
 
             uint256 hash = block.GetHash();
-            const CBlockIndex* pindex = LookupBlockIndex(hash);
-            if (pindex) {
-                if (pindex->IsValid(BLOCK_VALID_SCRIPTS))
-                    return "duplicate";
-                if (pindex->nStatus & BLOCK_FAILED_MASK)
-                    return "duplicate-invalid";
-                return "duplicate-inconclusive";
+            const CBlockIndex* pindex;
+            {
+                LOCK(cs_blockindex);
+                pindex = LookupBlockIndex(hash);
+                if (pindex) {
+                    if (pindex->IsValid(BLOCK_VALID_SCRIPTS))
+                        return "duplicate";
+                    if (pindex->nStatus & BLOCK_FAILED_MASK)
+                        return "duplicate-invalid";
+                    return "duplicate-inconclusive";
+                }
             }
 
             CBlockIndex* const pindexPrev = ::ChainActive().Tip();
@@ -713,7 +717,7 @@ static UniValue submitblock(const JSONRPCRequest& request)
 
     uint256 hash = block.GetHash();
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         const CBlockIndex* pindex = LookupBlockIndex(hash);
         if (pindex) {
             if (pindex->IsValid(BLOCK_VALID_SCRIPTS)) {
