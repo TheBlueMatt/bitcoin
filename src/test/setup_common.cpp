@@ -83,6 +83,8 @@ TestingSetup::TestingSetup(const std::string& chainName) : BasicTestingSetup(cha
     threadGroup.create_thread(std::bind(&CScheduler::serviceQueue, &scheduler));
     GetMainSignals().RegisterBackgroundSignalScheduler(scheduler);
 
+    threadGroup.create_thread(std::function<void()>(std::bind(&CChainState::ProcessBlockValidationQueue, &ChainstateActive())));
+
     mempool.setSanityCheck(1.0);
     pblocktree.reset(new CBlockTreeDB(1 << 20, true));
     pcoinsdbview.reset(new CCoinsViewDB(1 << 23, true));
@@ -106,6 +108,10 @@ TestingSetup::TestingSetup(const std::string& chainName) : BasicTestingSetup(cha
 
 TestingSetup::~TestingSetup()
 {
+    // If eg the block connection thread is waiting on the queue to drain,
+    // killing the scheduler thread now will hang us, so wait on the queue
+    // to drain first.
+    ChainstateActive().AwaitBlockValidationParked();
     threadGroup.interrupt_all();
     threadGroup.join_all();
     GetMainSignals().FlushBackgroundCallbacks();

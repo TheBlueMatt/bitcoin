@@ -566,6 +566,21 @@ private:
     //! easily as opposed to referencing a global.
     BlockManager& m_blockman;
 
+    /** Lock for m_block_validation_queue */
+    CCriticalSection m_cs_block_validation_queue;
+    /** CV for m_block_validation_queue */
+    std::condition_variable_any m_cv_block_validation_queue;
+    /**
+     * Queue of blocks to validate
+     * tuple<block, force-processing, promise-to-complete>
+     */
+    std::list<std::tuple<std::shared_ptr<const CBlock>, bool, std::promise<bool>>> m_block_validation_queue;
+
+    /** CV for waiting on the validation queue process to park */
+    std::condition_variable_any m_cv_block_validation_parked;
+    /** Indicates the block validation thread is parked */
+    bool m_block_validation_parked;
+
 public:
     CChainState(BlockManager& blockman) : m_blockman(blockman) { }
 
@@ -628,6 +643,19 @@ public:
 
     /** Check whether we are doing an initial block download (synchronizing from disk or network) */
     bool IsInitialBlockDownload() const;
+
+    /** Drain the block validation queue in a loop. Should be run only in one thread. */
+    void ProcessBlockValidationQueue();
+
+    /**
+     * Wait for the block validation queue process loop to be parked with no more work to do.
+     * Obviously only really useful during shutdown once no more blocks will be pushed to
+     * ProcessNewBlock.
+     */
+    void AwaitBlockValidationParked();
+
+    /** Push a new block to the block validation queue */
+    std::future<bool> ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, CValidationState& state, bool fForceProcessing);
 
     /**
      * Make various assertions about the state of the block index.

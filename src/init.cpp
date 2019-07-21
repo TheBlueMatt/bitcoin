@@ -1420,6 +1420,8 @@ bool AppInitMain(InitInterfaces& interfaces)
 
     // ********************************************************* Step 7: load block chain
 
+    threadGroup.create_thread(std::bind(&TraceThread<std::function<void()>>, "blockconn", std::function<void()>(std::bind(&CChainState::ProcessBlockValidationQueue, &ChainstateActive()))));
+
     fReindex = gArgs.GetBoolArg("-reindex", false);
     bool fReindexChainState = gArgs.GetBoolArg("-reindex-chainstate", false);
 
