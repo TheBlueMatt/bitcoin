@@ -588,7 +588,13 @@ private:
      * Checks whether we already had/have the block and whether it meets DoS
      * criteria.
      */
-    bool ShouldMaybeWrite(CBlockIndex* pindex, bool fRequested) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    bool ShouldMaybeWrite(CBlockIndex* pindex, bool fRequested);
+
+    /**
+     * Pre-write version of ShouldMaybeWrite annotated with cs_main required.
+     * If you are actually doing a disk write based on the result, this version must be called.
+     */
+    bool ShouldWrite(CBlockIndex* pindex, bool fRequested) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return ShouldMaybeWrite(pindex, fRequested); }
 
     /**
      * Performs initial DoS checks for the given block (assuming ShouldMaybeWrite

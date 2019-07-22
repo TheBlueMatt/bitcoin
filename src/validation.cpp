@@ -3407,7 +3407,6 @@ static FlatFilePos SaveBlockToDisk(const CBlock& block, int nHeight, const CChai
 
 bool CChainState::ShouldMaybeWrite(CBlockIndex* pindex, bool fRequested)
 {
-    AssertLockHeld(cs_main);
     LOCK(cs_blockindex);
 
     // Try to process all requested blocks that we don't have, but only
@@ -3565,7 +3564,7 @@ void CChainState::ProcessBlockValidationQueue()
             assert(pindex);
 
             // Check that we still want this block
-            if (!ShouldMaybeWrite(pindex, fForceProcessing)) {
+            if (!ShouldWrite(pindex, fForceProcessing)) {
                 result_promise.set_value(false);
                 continue;
             }
