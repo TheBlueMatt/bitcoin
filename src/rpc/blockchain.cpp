@@ -768,7 +768,7 @@ static UniValue getblockheader(const JSONRPCRequest& request)
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         pblockindex = LookupBlockIndex(hash);
         tip = ::ChainActive().Tip();
     }
@@ -897,7 +897,7 @@ static UniValue getblock(const JSONRPCRequest& request)
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         pblockindex = LookupBlockIndex(hash);
         tip = ::ChainActive().Tip();
 
@@ -960,7 +960,7 @@ static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
     CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
     stats.hashBlock = pcursor->GetBestBlock();
     {
-        LOCK(cs_main);
+        LOCK(cs_blockindex);
         stats.nHeight = LookupBlockIndex(stats.hashBlock)->nHeight;
     }
     ss << stats.hashBlock;
@@ -1127,8 +1127,6 @@ UniValue gettxout(const JSONRPCRequest& request)
                 },
             }.Check(request);
 
-    LOCK(cs_main);
-
     UniValue ret(UniValue::VOBJ);
 
     uint256 hash(ParseHashV(request.params[0], "txid"));
@@ -1140,12 +1138,13 @@ UniValue gettxout(const JSONRPCRequest& request)
 
     Coin coin;
     if (fMempool) {
-        LOCK(mempool.cs);
+        LOCK2(cs_main, mempool.cs);
         CCoinsViewMemPool view(pcoinsTip.get(), mempool);
         if (!view.GetCoin(out, coin) || mempool.isSpent(out)) {
             return NullUniValue;
         }
     } else {
+        LOCK(cs_main);
         if (!pcoinsTip->GetCoin(out, coin)) {
             return NullUniValue;
         }

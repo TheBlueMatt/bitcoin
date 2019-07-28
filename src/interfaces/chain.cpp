@@ -53,6 +53,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     Optional<int> getBlockHeight(const uint256& hash) override
     {
         LockAssertion lock(::cs_main);
+        LockAssertion lock2(::cs_blockindex);
         CBlockIndex* block = LookupBlockIndex(hash);
         if (block && ::ChainActive().Contains(block)) {
             return block->nHeight;
@@ -121,6 +122,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     Optional<int> findFork(const uint256& hash, Optional<int>* height) override
     {
         LockAssertion lock(::cs_main);
+        LockAssertion lock2(::cs_blockindex);
         const CBlockIndex* block = LookupBlockIndex(hash);
         const CBlockIndex* fork = block ? ::ChainActive().FindFork(block) : nullptr;
         if (height) {
@@ -254,7 +256,7 @@ public:
     {
         CBlockIndex* index;
         {
-            LOCK(cs_main);
+            LOCK(cs_blockindex);
             index = LookupBlockIndex(hash);
             if (!index) {
                 return false;
@@ -353,7 +355,7 @@ public:
     void waitForNotificationsIfNewBlocksConnected(const uint256& old_tip) override
     {
         if (!old_tip.IsNull()) {
-            LOCK(::cs_main);
+            LOCK2(::cs_main, ::cs_blockindex);
             if (old_tip == ::ChainActive().Tip()->GetBlockHash()) return;
             CBlockIndex* block = LookupBlockIndex(old_tip);
             if (block && block->GetAncestor(::ChainActive().Height()) == ::ChainActive().Tip()) return;

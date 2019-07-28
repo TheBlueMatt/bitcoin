@@ -141,7 +141,7 @@ static bool rest_headers(HTTPRequest* req,
     std::vector<const CBlockIndex *> headers;
     headers.reserve(count);
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, cs_blockindex);
         tip = ::ChainActive().Tip();
         const CBlockIndex* pindex = LookupBlockIndex(hash);
         while (pindex != nullptr && ::ChainActive().Contains(pindex)) {

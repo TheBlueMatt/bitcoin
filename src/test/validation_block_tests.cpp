@@ -88,7 +88,7 @@ std::shared_ptr<CBlock> Block(const uint256& prev_hash)
 
 std::shared_ptr<CBlock> FinalizeBlock(std::shared_ptr<CBlock> pblock)
 {
-    LOCK(cs_main); // For LookupBlockIndex
+    LOCK(cs_blockindex); // For LookupBlockIndex
     GenerateCoinbaseCommitment(*pblock, LookupBlockIndex(pblock->hashPrevBlock), Params().GetConsensus());
 
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);

@@ -240,7 +240,7 @@ void BaseIndex::ChainStateFlushed(const CBlockLocator& locator)
     const uint256& locator_tip_hash = locator.vHave.front();
     const CBlockIndex* locator_tip_index;
     {
-        LOCK(cs_main);
+        LOCK(cs_blockindex);
         locator_tip_index = LookupBlockIndex(locator_tip_hash);
     }
 

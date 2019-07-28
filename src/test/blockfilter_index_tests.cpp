@@ -183,7 +183,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
 
         const CBlockIndex* block_index;
         {
-            LOCK(cs_main);
+            LOCK(cs_blockindex);
             block_index = LookupBlockIndex(block->GetHash());
         }
 
@@ -201,7 +201,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
 
         const CBlockIndex* block_index;
         {
-            LOCK(cs_main);
+            LOCK(cs_blockindex);
             block_index = LookupBlockIndex(block->GetHash());
         }
 
@@ -215,7 +215,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
         const auto& block = chainA[i];
         const CBlockIndex* block_index;
         {
-            LOCK(cs_main);
+            LOCK(cs_blockindex);
             block_index = LookupBlockIndex(block->GetHash());
         }
 
@@ -238,14 +238,14 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
          const CBlockIndex* block_index;
 
          {
-             LOCK(cs_main);
+             LOCK(cs_blockindex);
              block_index = LookupBlockIndex(chainA[i]->GetHash());
          }
          BOOST_CHECK(filter_index.BlockUntilSyncedToCurrentChain());
          CheckFilterLookups(filter_index, block_index, chainA_last_header);
 
          {
-             LOCK(cs_main);
+             LOCK(cs_blockindex);
              block_index = LookupBlockIndex(chainB[i]->GetHash());
          }
          BOOST_CHECK(filter_index.BlockUntilSyncedToCurrentChain());

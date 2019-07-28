@@ -149,7 +149,7 @@ namespace {
 
 CBlockIndex* LookupBlockIndex(const uint256& hash)
 {
-    AssertLockHeld(cs_main);
+    AssertLockHeld(cs_blockindex);
     BlockMap::const_iterator it = g_blockman.m_block_index.find(hash);
     return it == g_blockman.m_block_index.end() ? nullptr : it->second;
 }
