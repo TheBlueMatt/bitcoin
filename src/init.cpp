@@ -192,6 +192,7 @@ void Shutdown(InitInterfaces& interfaces)
 #if ENABLE_RUSTY
     rust_block_fetch::stop_fetch_dns_headers();
     rust_block_fetch::stop_fetch_rest_blocks();
+    rust_block_fetch::stop_lora_headers();
 #endif
 
     StopHTTPRPC();
@@ -379,6 +380,7 @@ void SetupServerArgs()
 #if ENABLE_RUSTY
     gArgs.AddArg("-headersfetchdns=<domain>", "A domain name from which to fetch headers. eg bitcoinheaders.net", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-blockfetchrest=<uri>", "A REST endpoint from which to fetch blocks. Acts as a redundant backup for P2P connectivity. eg http://cloudflare.deanonymizingseed.com/rest/", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-lorabroadcastheaders=<region>:<noise>:<protocol>:<tty>", "A protocol and path to a TTY device to broadcast/recv headers over LORA. Currently only NA and EU is supported for <region> and only rnode is supported for <protocol>. <noise> is 1-4 and indicates relative noise immunity, 4 for urban areas, 1 for rural areas.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
     gArgs.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1844,6 +1846,9 @@ bool AppInitMain(InitInterfaces& interfaces)
     }
     for (const std::string& uri : gArgs.GetArgs("-blockfetchrest")) {
         rust_block_fetch::init_fetch_rest_blocks(uri.c_str());
+    }
+    for (const std::string& proto_tty : gArgs.GetArgs("-lorabroadcastheaders")) {
+        rust_block_fetch::init_lora_headers(proto_tty.c_str(), Params().MessageStart());
     }
 #endif
 

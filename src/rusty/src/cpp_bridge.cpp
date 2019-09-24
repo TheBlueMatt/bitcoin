@@ -3,6 +3,7 @@
 #include <shutdown.h>
 #include <serialize.h>
 #include <consensus/validation.h>
+#include <random.h>
 #include <logging.h>
 
 /** A class that deserializes a single thing one time. */
@@ -159,6 +160,10 @@ const void* rusty_ProviderStateGetNextDownloads(void* providerindexvoid, bool ha
     return blocks.empty() ? nullptr : blocks[0];
 }
 
+void rusty_ProvideEntropy(const unsigned char* buf, size_t num) {
+    AddEntropy(buf, num);
+}
+
 void rusty_LogLine(const unsigned char* str, bool debug) {
     if (debug) {
         LogPrint(BCLog::RUST, "%s\n", str);
@@ -175,6 +180,48 @@ void rusty_AcceptToMemoryPool(const unsigned char* txdata, size_t txdatalen) {
     LOCK(cs_main);
     CValidationState state_dummy;
     AcceptToMemoryPool(::mempool, state_dummy, tx, nullptr, nullptr, false, 0);
+}
+
+#include <termios.h>
+#include <unistd.h>
+bool rusty_set_char_dev_raw_115200(int fd) {
+    struct termios term;
+    if (tcgetattr(fd, &term) != 0) {
+        return false;
+    }
+    if (cfsetspeed(&term, B115200) != 0) {
+        return false;
+    }
+    cfmakeraw(&term);
+    if (tcsetattr(fd, TCSANOW, &term) != 0) {
+        return false;
+    }
+    return true;
+}
+
+#include <sys/select.h>
+uint8_t rusty_select(int fd, bool await_write, long timeout_sec, long timeout_usec) {
+    fd_set rd;
+    FD_ZERO(&rd);
+    FD_SET(fd, &rd);
+    struct timeval t;
+    t.tv_sec = timeout_sec;
+    t.tv_usec = timeout_usec;
+    if (await_write) {
+        fd_set wr;
+        FD_ZERO(&wr);
+        FD_SET(fd, &wr);
+        select(fd + 1, &rd, &wr, nullptr, &t);
+        return (FD_ISSET(fd, &rd) ? 1 : 0) |
+            (FD_ISSET(fd, &wr) ? 0b10 : 0);
+    } else {
+        select(fd + 1, &rd, nullptr, nullptr, &t);
+        return FD_ISSET(fd, &rd) ? 1 : 0;
+    }
+}
+
+bool rusty_select_possible(int fd) {
+    return fd <= FD_SETSIZE;
 }
 
 }

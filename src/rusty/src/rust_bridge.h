@@ -19,6 +19,8 @@ bool init_fetch_dns_headers(const char *domain);
 bool stop_fetch_dns_headers();
 bool init_fetch_rest_blocks(const char *uri);
 bool stop_fetch_rest_blocks();
+bool init_lora_headers(const char *proto_tty, const uint8_t *msg_start_4_bytes);
+bool stop_lora_headers();
 
 } // extern "C"
 

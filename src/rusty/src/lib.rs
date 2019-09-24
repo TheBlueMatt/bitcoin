@@ -2,6 +2,7 @@ mod bridge;
 use bridge::*;
 mod dns_headers;
 mod rest_downloader;
+mod lora_headers;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::ptr;

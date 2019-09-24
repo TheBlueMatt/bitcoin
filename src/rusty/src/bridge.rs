@@ -1,4 +1,6 @@
 use std::ffi::{c_void, CString};
+use std::os::raw::{c_int, c_long};
+
 extern "C" {
     pub fn rusty_IsInitialBlockDownload() -> bool;
     pub fn rusty_ShutdownRequested() -> bool;
@@ -182,8 +184,15 @@ impl Drop for BlockProviderState {
 extern "C" {
     // General utilities. Wrapped in safe wrappers below.
 
+    /// Provide some bytes of random(-ish) data for use in Bitcoin Core's RNG
+    fn rusty_ProvideEntropy(data: *const u8, len: usize);
+
     /// Log some string
     fn rusty_LogLine(string: *const u8, debug: bool);
+}
+
+pub fn provide_entropy(data: &[u8]) {
+    unsafe { rusty_ProvideEntropy(data.as_ptr(), data.len()); }
 }
 
 pub fn log_line(line: &str, debug: bool) {
@@ -204,4 +213,18 @@ extern "C" {
 
 pub fn accept_to_memory_pool(data: &[u8]) {
     unsafe { rusty_AcceptToMemoryPool(data.as_ptr(), data.len()); }
+}
+
+extern "C" {
+    // C syscall wrappers
+
+    /// Sets a character device (open at the given fd) to raw, 115200 8N1
+    pub fn rusty_set_char_dev_raw_115200(fd: c_int) -> bool;
+
+    /// Waits for the given fd to be readable, or, optionally, writable.
+    /// LSB indicates socket readable, second bit indicates socket writable (and await_write)
+    pub fn rusty_select(fd: c_int, await_write: bool, timeout_sec: c_long, timeout_usec: c_long) -> u8;
+
+    /// Returns true if the given file descriptor can be select()ed (ie is <= FD_SETSIZE)
+    pub fn rusty_select_possible(fd: c_int) -> bool;
 }

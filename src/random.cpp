@@ -660,6 +660,15 @@ void GetRandBytes(unsigned char* buf, int num) noexcept { ProcRand(buf, num, RNG
 void GetStrongRandBytes(unsigned char* buf, int num) noexcept { ProcRand(buf, num, RNGLevel::SLOW); }
 void RandAddSeedSleep() { ProcRand(nullptr, 0, RNGLevel::SLEEP); }
 
+void AddEntropy(const unsigned char* buf, size_t num) {
+    // Make sure the RNG is initialized first (as all Seed* function possibly need hwrand to be available).
+    RNGState& rng = GetRNGState();
+
+    CSHA512 hasher;
+    hasher.Write(buf, num);
+    rng.MixExtract(nullptr, 0, std::move(hasher), false);
+}
+
 bool g_mock_deterministic_tests{false};
 
 uint64_t GetRand(uint64_t nMax) noexcept
