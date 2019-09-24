@@ -15,15 +15,26 @@ extern "C" {
     /// Guaranteed to never be NULL (but may be genesis)
     fn rusty_GetChainTip() -> *const c_void;
 
+    /// Gets a CBlockIndex* pointer (casted to a c_void) representing the current best
+    /// (not known to be invalid) header.
+    /// Guaranteed to never be NULL (but may be genesis)
+    fn rusty_GetBestHeader() -> *const c_void;
+
     /// Gets a CBlockIndex* pointer (casted to a c_void) representing the genesis block.
     /// Guaranteed to never be NULL
     fn rusty_GetGenesisIndex() -> *const c_void;
+
+    /// Finds a CBlockIndex* for a given current height, or NULL if none is found
+    fn rusty_HeightToIndex(height: i32) -> *const c_void;
 
     /// Gets the height of a given CBlockIndex* pointer
     fn rusty_IndexToHeight(index: *const c_void) -> i32;
 
     /// Gets the hash of a given CBlockIndex* pointer
     fn rusty_IndexToHash(index: *const c_void) -> *const u8;
+
+    /// Serializes the header pointed to by the CBlockIndex* into eighty_bytes_dest.
+    fn rusty_SerializeIndex(index: *const c_void, eighty_bytes_dest: *mut u8);
 }
 
 /// Connects the given array of (sorted, in chain order) headers (in serialized, 80-byte form).
@@ -57,6 +68,21 @@ impl BlockIndex {
         }
     }
 
+    pub fn best_header() -> Self {
+        Self {
+            index: unsafe { rusty_GetBestHeader() },
+        }
+    }
+
+    pub fn get_from_height(height: i32) -> Option<Self> {
+        let index = unsafe { rusty_HeightToIndex(height) };
+        if index.is_null() {
+            None
+        } else {
+            Some(Self { index })
+        }
+    }
+
     pub fn genesis() -> Self {
         Self {
             index: unsafe { rusty_GetGenesisIndex() },
@@ -85,6 +111,13 @@ impl BlockIndex {
             res.push(std::char::from_digit((b & 0x0f) as u32, 16).unwrap());
         }
         res
+    }
+
+    /// Gets the full, serialized, header
+    pub fn header_bytes(&self) -> [u8; 80] {
+        let mut ser = [0u8; 80];
+        unsafe { rusty_SerializeIndex(self.index, (&mut ser).as_mut_ptr()); }
+        ser
     }
 }
 
@@ -160,4 +193,15 @@ pub fn log_line(line: &str, debug: bool) {
     };
     let ptr = cstr.as_bytes_with_nul();
     unsafe { rusty_LogLine(ptr.as_ptr(), debug); }
+}
+
+extern "C" {
+    // Utilities related to transactions. Wrapped in safe wrappers below.
+
+    /// Attempt to add a transaction to the memory pool
+    fn rusty_AcceptToMemoryPool(txdata: *const u8, txdatalen: usize);
+}
+
+pub fn accept_to_memory_pool(data: &[u8]) {
+    unsafe { rusty_AcceptToMemoryPool(data.as_ptr(), data.len()); }
 }

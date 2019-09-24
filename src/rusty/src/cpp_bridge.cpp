@@ -93,11 +93,22 @@ const void* rusty_GetChainTip() {
     return tip;
 }
 
+const void* rusty_GetBestHeader() {
+    LOCK(cs_main);
+    assert(pindexBestHeader != nullptr);
+    return pindexBestHeader;
+}
+
 const void* rusty_GetGenesisIndex() {
     LOCK(cs_main);
     const CBlockIndex* genesis = ::ChainActive().Genesis();
     assert(genesis != nullptr);
     return genesis;
+}
+
+const void* rusty_HeightToIndex(const int32_t height) {
+    LOCK(cs_main);
+    return ::ChainActive()[height];
 }
 
 int32_t rusty_IndexToHeight(const void* pindexvoid) {
@@ -110,6 +121,16 @@ const uint8_t* rusty_IndexToHash(const void* pindexvoid) {
     const CBlockIndex *pindex = (const CBlockIndex*) pindexvoid;
     assert(pindex != nullptr);
     return pindex->phashBlock->begin();
+}
+
+void rusty_SerializeIndex(const void* pindexvoid, unsigned char* eighty_bytes_dest) {
+    //TODO: Could optimize this a bit
+    const CBlockIndex *pindex = (const CBlockIndex*) pindexvoid;
+    std::vector<unsigned char> ser;
+    ser.reserve(80);
+    CVectorWriter(SER_NETWORK, PROTOCOL_VERSION, ser, 0) << pindex->GetBlockHeader();
+    assert(ser.size() == 80);
+    memcpy(eighty_bytes_dest, ser.data(), 80);
 }
 
 void* rusty_ProviderStateInit(const void* pindexvoid) {
@@ -144,6 +165,16 @@ void rusty_LogLine(const unsigned char* str, bool debug) {
     } else {
         LogPrintf("%s\n", str);
     }
+}
+
+void rusty_AcceptToMemoryPool(const unsigned char* txdata, size_t txdatalen) {
+    CTransactionRef tx;
+    try {
+        InputStream(SER_NETWORK, PROTOCOL_VERSION, txdata, txdatalen) >> tx;
+    } catch (...) {}
+    LOCK(cs_main);
+    CValidationState state_dummy;
+    AcceptToMemoryPool(::mempool, state_dummy, tx, nullptr, nullptr, false, 0);
 }
 
 }
