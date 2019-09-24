@@ -3,6 +3,7 @@
 #include <shutdown.h>
 #include <serialize.h>
 #include <consensus/validation.h>
+#include <logging.h>
 
 /** A class that deserializes a single thing one time. */
 class InputStream
@@ -135,6 +136,14 @@ const void* rusty_ProviderStateGetNextDownloads(void* providerindexvoid, bool ha
     LOCK(cs_main);
     state->FindNextBlocksToDownload(has_witness, 1, blocks, ::Params().GetConsensus(), [] (const uint256& block_hash) { return false; });
     return blocks.empty() ? nullptr : blocks[0];
+}
+
+void rusty_LogLine(const unsigned char* str, bool debug) {
+    if (debug) {
+        LogPrint(BCLog::RUST, "%s\n", str);
+    } else {
+        LogPrintf("%s\n", str);
+    }
 }
 
 }

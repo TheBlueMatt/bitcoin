@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 extern "C" {
     pub fn rusty_IsInitialBlockDownload() -> bool;
     pub fn rusty_ShutdownRequested() -> bool;
@@ -144,4 +144,20 @@ impl Drop for BlockProviderState {
     fn drop(&mut self) {
         unsafe { rusty_ProviderStateFree(self.state) };
     }
+}
+
+extern "C" {
+    // General utilities. Wrapped in safe wrappers below.
+
+    /// Log some string
+    fn rusty_LogLine(string: *const u8, debug: bool);
+}
+
+pub fn log_line(line: &str, debug: bool) {
+    let cstr = match CString::new(line) {
+        Ok(cstr) => cstr,
+        Err(_) => CString::new("Attempted to log an str with nul bytes in it?!").unwrap(),
+    };
+    let ptr = cstr.as_bytes_with_nul();
+    unsafe { rusty_LogLine(ptr.as_ptr(), debug); }
 }
