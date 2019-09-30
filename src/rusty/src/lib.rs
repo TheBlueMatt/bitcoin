@@ -11,6 +11,9 @@ mod bridge;
 use bridge::*;
 mod dns_headers;
 mod rest_downloader;
+mod p2p_addrs;
+mod p2p_client;
+mod p2p_socket_handler;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::ptr;

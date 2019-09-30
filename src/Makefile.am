@@ -375,7 +375,9 @@ LIBBITCOIN_RUSTY_SRCS= \
   rusty/src/lib.rs \
   rusty/src/bridge.rs \
   rusty/src/dns_headers.rs \
-  rusty/src/rest_downloader.rs
+  rusty/src/rest_downloader.rs \
+  rusty/src/p2p_addrs.rs rusty/src/p2p_client.rs \
+  rusty/src/p2p_socket_handler.rs
 
 rusty/liblibc.rlib: rusty/libc/src/lib.rs $(wildcard rusty/libc/src/*.rs)
 	$(RUSTC) --crate-name libc $< --crate-type=rlib -g -O -C overflow-checks=on -C panic=unwind --out-dir $(@D) && \

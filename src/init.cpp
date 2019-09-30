@@ -192,6 +192,7 @@ void Shutdown(InitInterfaces& interfaces)
 #if ENABLE_RUSTY
     rust_block_fetch::stop_fetch_dns_headers();
     rust_block_fetch::stop_fetch_rest_blocks();
+    rust_block_fetch::stop_p2p_client();
 #endif
 
     StopHTTPRPC();
@@ -379,6 +380,7 @@ void SetupServerArgs()
 #if ENABLE_RUSTY
     gArgs.AddArg("-headersfetchdns=<domain>", "A domain name from which to fetch headers. eg bitcoinheaders.net", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-blockfetchrest=<uri>", "A REST endpoint from which to fetch blocks. Acts as a redundant backup for P2P connectivity. eg http://cloudflare.deanonymizingseed.com/rest/", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    gArgs.AddArg("-parallelp2p", strprintf("Whether to run a parallel P2P client to provide redundancy in block fetch implementation (default: %u).", rust_block_fetch::DEFAULT_P2P), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
 #endif
     gArgs.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1347,6 +1349,11 @@ bool AppInitMain(InitInterfaces& interfaces)
         return InitError(strprintf(_("Total length of network version string (%i) exceeds maximum length (%i). Reduce the number or size of uacomments.").translated,
             strSubVersion.size(), MAX_SUBVERSION_LENGTH));
     }
+    std::string rusty_sub_ver = FormatSubVersion(RUSTY_CLIENT_NAME, CLIENT_VERSION, uacomments);
+    if (gArgs.GetBoolArg("-parallelp2p", rust_block_fetch::DEFAULT_P2P) && rusty_sub_ver.size() > MAX_SUBVERSION_LENGTH) {
+        return InitError(strprintf(_("Total length of network version string (%i) exceeds maximum length (%i). Reduce the number or size of uacomments.").translated,
+            rusty_sub_ver.size(), MAX_SUBVERSION_LENGTH));
+    }
 
     if (gArgs.IsArgSet("-onlynet")) {
         std::set<enum Network> nets;
@@ -1844,6 +1851,13 @@ bool AppInitMain(InitInterfaces& interfaces)
     }
     for (const std::string& uri : gArgs.GetArgs("-blockfetchrest")) {
         rust_block_fetch::init_fetch_rest_blocks(uri.c_str());
+    }
+    if (gArgs.GetBoolArg("-parallelp2p", rust_block_fetch::DEFAULT_P2P)) {
+        std::vector<const char*> dnsseeds;
+        for (const std::string& seed : Params().DNSSeeds()) {
+            dnsseeds.push_back(seed.c_str());
+        }
+        rust_block_fetch::init_p2p_client(GetDataDir().c_str(), rusty_sub_ver.c_str(), dnsseeds.data(), dnsseeds.size());
     }
 #endif
 
