@@ -76,6 +76,10 @@
 #include <zmq/zmqrpc.h>
 #endif
 
+#if ENABLE_RUSTY
+#include <rusty/src/rust_bridge.h>
+#endif
+
 static bool fFeeEstimatesInitialized = false;
 static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
@@ -184,6 +188,10 @@ void Shutdown(InitInterfaces& interfaces)
     /// module was initialized.
     util::ThreadRename("shutoff");
     mempool.AddTransactionsUpdated(1);
+
+#if ENABLE_RUSTY
+    rust_block_fetch::stop_fetch_dns_headers();
+#endif
 
     StopHTTPRPC();
     StopREST();
@@ -338,10 +346,6 @@ static void OnRPCStopped()
     LogPrint(BCLog::RPC, "RPC stopped.\n");
 }
 
-#if ENABLE_RUSTY
-#include <rusty/src/rust_bridge.h>
-#endif
-
 void SetupServerArgs()
 {
     SetupHelpOptions(gArgs);
@@ -371,6 +375,9 @@ void SetupServerArgs()
 #endif
     gArgs.AddArg("-blockreconstructionextratxn=<n>", strprintf("Extra transactions to keep in memory for compact block reconstructions (default: %u)", DEFAULT_BLOCK_RECONSTRUCTION_EXTRA_TXN), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-blocksonly", strprintf("Whether to reject transactions from network peers. Transactions from the wallet, RPC and relay whitelisted inbound peers are not affected. (default: %u)", DEFAULT_BLOCKSONLY), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+#if ENABLE_RUSTY
+    gArgs.AddArg("-headersfetchdns=<domain>", "A domain name from which to fetch headers. eg bitcoinheaders.net", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+#endif
     gArgs.AddArg("-conf=<file>", strprintf("Specify configuration file. Relative paths will be prefixed by datadir location. (default: %s)", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-dbbatchsize", strprintf("Maximum database write batch size in bytes (default: %u)", nDefaultDbBatchSize), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
@@ -1826,6 +1833,14 @@ bool AppInitMain(InitInterfaces& interfaces)
     scheduler.scheduleEvery([]{
         g_banman->DumpBanlist();
     }, DUMP_BANS_INTERVAL * 1000);
+
+    // ********************************************************* Step 14: kick off backup block downloaders
+
+#if ENABLE_RUSTY
+    for (const std::string& domain : gArgs.GetArgs("-headersfetchdns")) {
+        rust_block_fetch::init_fetch_dns_headers(domain.c_str());
+    }
+#endif
 
     return true;
 }

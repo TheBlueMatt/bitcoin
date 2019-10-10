@@ -373,7 +373,8 @@ libbitcoin_wallet_tool_a_SOURCES = \
 
 LIBBITCOIN_RUSTY_SRCS= \
   rusty/src/lib.rs \
-  rusty/src/bridge.rs
+  rusty/src/bridge.rs \
+  rusty/src/dns_headers.rs
 
 # We force overflow checks on so that any integer overflows result in a panic
 # instead of, eg, attempting to alloc 4GB of memory (though we will catch such
