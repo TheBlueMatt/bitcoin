@@ -256,50 +256,6 @@ extern "C" {
 }
 
 
-#[cfg(feature = "std")]
-#[no_mangle]
-/// A reimplementation of the C function `secp256k1_context_create` in rust.
-///
-/// This function allocates memory, the pointer should be deallocated using `secp256k1_context_destroy`
-/// A failure to do so will result in a memory leak.
-///
-/// This will create a secp256k1 raw context.
-// Returns: a newly created context object.
-//  In:      flags: which parts of the context to initialize.
-pub unsafe extern "C" fn secp256k1_context_create(flags: c_uint) -> *mut Context {
-    assert!(mem::align_of::<usize>() >= mem::align_of::<u8>());
-    assert_eq!(mem::size_of::<usize>(), mem::size_of::<&usize>());
-
-    let word_size = mem::size_of::<usize>();
-    let n_words = (secp256k1_context_preallocated_size(flags) + word_size - 1) / word_size;
-
-    let buf = vec![0usize; n_words + 1].into_boxed_slice();
-    let ptr = Box::into_raw(buf) as *mut usize;
-    ::core::ptr::write(ptr, n_words);
-    let ptr: *mut usize = ptr.offset(1);
-
-    secp256k1_context_preallocated_create(ptr as *mut c_void, flags)
-}
-
-#[cfg(feature = "std")]
-#[no_mangle]
-/// A reimplementation of the C function `secp256k1_context_destroy` in rust.
-///
-/// This function destroys and deallcates the context created by `secp256k1_context_create`.
-///
-/// The pointer shouldn't be used after passing to this function, consider it as passing it to `free()`.
-///
-pub unsafe extern "C" fn secp256k1_context_destroy(ctx: *mut Context) {
-    secp256k1_context_preallocated_destroy(ctx);
-    let ctx: *mut usize = ctx as *mut usize;
-
-    let n_words_ptr: *mut usize = ctx.offset(-1);
-    let n_words: usize = ::core::ptr::read(n_words_ptr);
-    let slice: &mut [usize] = slice::from_raw_parts_mut(n_words_ptr , n_words+1);
-    let _ = Box::from_raw(slice as *mut [usize]);
-}
-
-
 #[no_mangle]
 /// **This function is an override for the C function, this is the an edited version of the original description:**
 ///
