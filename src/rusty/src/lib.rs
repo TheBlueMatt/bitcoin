@@ -2,7 +2,9 @@
 // with incredibly verbose warnings. Sadly, we need to support users who use rustc
 // as distributed by their linux distribution, so in generally cannot "fix" the
 // warnings. Thus, we should disable such useless lints below.
+#![allow(bare_trait_objects)]
 #![allow(deprecated)]
+#![allow(ellipsis_inclusive_range_patterns)]
 
 extern crate bitcoin;
 extern crate bitcoin_hashes;
@@ -14,6 +16,7 @@ extern crate libc;
 use bridge::*;
 
 mod dns_headers;
+mod radio_headers;
 mod rest_downloader;
 
 // Our P2P socket handler currently only supports poll(), so we stub out all the P2P client for

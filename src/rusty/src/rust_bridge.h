@@ -21,6 +21,8 @@ bool init_fetch_rest_blocks(const char *uri);
 bool stop_fetch_rest_blocks();
 bool init_p2p_client(void* pconnman, const char *datadir, const char *subver, uint16_t bind_port, const char **dnsseed_names, size_t dnsseed_count);
 bool stop_p2p_client();
+bool init_radio_headers(const char *proto_tty, const uint8_t *msg_start_4_bytes);
+bool stop_radio_headers();
 
 static const bool DEFAULT_P2P = true;
 

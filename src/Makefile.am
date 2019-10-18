@@ -385,7 +385,8 @@ LIBBITCOIN_RUSTY_SRCS= \
   rusty/src/dns_headers.rs \
   rusty/src/rest_downloader.rs \
   rusty/src/p2p_addrs.rs rusty/src/p2p_client.rs \
-  rusty/src/p2p_socket_handler.rs
+  rusty/src/p2p_socket_handler.rs \
+  rusty/src/radio_headers.rs
 
 LIBBITCOIN_RUSTY_TEST_SRCS= \
   rusty/src/test_bridge.rs

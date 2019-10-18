@@ -191,6 +191,7 @@ void Shutdown(NodeContext& node)
     rust_block_fetch::stop_fetch_dns_headers();
     rust_block_fetch::stop_fetch_rest_blocks();
     rust_block_fetch::stop_p2p_client();
+    rust_block_fetch::stop_radio_headers();
 #endif
 
     StopHTTPRPC();
@@ -408,6 +409,7 @@ void SetupServerArgs()
                  ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 
 #if ENABLE_RUSTY
+    gArgs.AddArg("-radiobroadcastheaders=<protocol>:<rw>:<protocol_args>:<tty_path>", "A protocol, arguments and path to a TTY device to broadcast/recv headers over radio. See doc/censorship.md for more information.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     gArgs.AddArg("-blockfetchrest=<uri>", "A REST endpoint from which to fetch blocks. Acts as a redundant backup for P2P connectivity. eg http://cloudflare.deanonymizingseed.com/rest/", ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-headersfetchdns=<domain>", "A domain name from which to fetch headers. eg bitcoinheaders.net", ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-parallelp2p", strprintf("Whether to run a parallel P2P client to provide redundancy in block fetch implementation (default: %u).", rust_block_fetch::DEFAULT_P2P), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
@@ -1860,6 +1862,9 @@ bool AppInitMain(NodeContext& node)
         }
         unsigned short bind_port = (unsigned short)(gArgs.GetArg("-parallelp2pport", Params().GetDefaultPort() + 1));
         rust_block_fetch::init_p2p_client(node.connman.get(), GetDataDir().c_str(), rusty_sub_ver.c_str(), bind_port, dnsseeds.data(), dnsseeds.size());
+    }
+    for (const std::string& proto_tty : gArgs.GetArgs("-radiobroadcastheaders")) {
+        rust_block_fetch::init_radio_headers(proto_tty.c_str(), Params().MessageStart());
     }
 #endif
 
