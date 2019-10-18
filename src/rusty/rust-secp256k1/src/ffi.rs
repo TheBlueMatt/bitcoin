@@ -178,10 +178,6 @@ extern "C" {
                                                    input64: *const c_uchar)
                                                    -> c_int;
 
-    pub fn ecdsa_signature_parse_der_lax(cx: *const Context, sig: *mut Signature,
-                                         input: *const c_uchar, in_len: usize)
-                                         -> c_int;
-
     pub fn secp256k1_ecdsa_signature_serialize_der(cx: *const Context, output: *mut c_uchar,
                                                    out_len: *mut usize, sig: *const Signature)
                                                    -> c_int;
@@ -473,12 +469,6 @@ mod fuzz_dummy {
         if secp256k1_ec_seckey_verify(cx, input64.offset(32)) != 1 { return 0; } // sig should be msg32||sk
         ptr::copy(input64, (*sig).0[..].as_mut_ptr(), 64);
         1
-    }
-
-    pub unsafe fn ecdsa_signature_parse_der_lax(_cx: *const Context, _sig: *mut Signature,
-                                                _input: *const c_uchar, _in_len: usize)
-                                                -> c_int {
-        unimplemented!();
     }
 
     /// Copies up to 72 bytes into output from sig

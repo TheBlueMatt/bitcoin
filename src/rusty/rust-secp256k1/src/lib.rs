@@ -287,29 +287,6 @@ impl Signature {
         }
     }
 
-    /// Converts a "lax DER"-encoded byte slice to a signature. This is basically
-    /// only useful for validating signatures in the Bitcoin blockchain from before
-    /// 2016. It should never be used in new applications. This library does not
-    /// support serializing to this "format"
-    pub fn from_der_lax(data: &[u8]) -> Result<Signature, Error> {
-        if data.is_empty() {return Err(Error::InvalidSignature);}
-
-        unsafe {
-            let mut ret = ffi::Signature::new();
-            if ffi::ecdsa_signature_parse_der_lax(
-                ffi::secp256k1_context_no_precomp,
-                &mut ret,
-                data.as_c_ptr(),
-                data.len() as usize,
-            ) == 1
-            {
-                Ok(Signature(ret))
-            } else {
-                Err(Error::InvalidSignature)
-            }
-        }
-    }
-
     /// Normalizes a signature to a "low S" form. In ECDSA, signatures are
     /// of the form (r, s) where r and s are numbers lying in some finite
     /// field. The verification equation will pass for (r, s) iff it passes
@@ -863,24 +840,6 @@ mod tests {
         let hex_str = "30450221009d0bad576719d32ae76bedb34c774866673cbde3f4e12951555c9408e6ce774b02202876e7102f204f6bfee26c967c3926ce702cf97d4b010062e193f763190f6776";
         let sig = Signature::from_str(&hex_str).expect("byte str decode");
         assert_eq!(&format!("{}", sig), hex_str);
-    }
-
-    #[test]
-    fn signature_lax_der() {
-        macro_rules! check_lax_sig(
-            ($hex:expr) => ({
-                let sig = hex!($hex);
-                assert!(Signature::from_der_lax(&sig[..]).is_ok());
-            })
-        );
-
-        check_lax_sig!("304402204c2dd8a9b6f8d425fcd8ee9a20ac73b619906a6367eac6cb93e70375225ec0160220356878eff111ff3663d7e6bf08947f94443845e0dcc54961664d922f7660b80c");
-        check_lax_sig!("304402202ea9d51c7173b1d96d331bd41b3d1b4e78e66148e64ed5992abd6ca66290321c0220628c47517e049b3e41509e9d71e480a0cdc766f8cdec265ef0017711c1b5336f");
-        check_lax_sig!("3045022100bf8e050c85ffa1c313108ad8c482c4849027937916374617af3f2e9a881861c9022023f65814222cab09d5ec41032ce9c72ca96a5676020736614de7b78a4e55325a");
-        check_lax_sig!("3046022100839c1fbc5304de944f697c9f4b1d01d1faeba32d751c0f7acb21ac8a0f436a72022100e89bd46bb3a5a62adc679f659b7ce876d83ee297c7a5587b2011c4fcc72eab45");
-        check_lax_sig!("3046022100eaa5f90483eb20224616775891397d47efa64c68b969db1dacb1c30acdfc50aa022100cf9903bbefb1c8000cf482b0aeeb5af19287af20bd794de11d82716f9bae3db1");
-        check_lax_sig!("3045022047d512bc85842ac463ca3b669b62666ab8672ee60725b6c06759e476cebdc6c102210083805e93bd941770109bcc797784a71db9e48913f702c56e60b1c3e2ff379a60");
-        check_lax_sig!("3044022023ee4e95151b2fbbb08a72f35babe02830d14d54bd7ed1320e4751751d1baa4802206235245254f58fd1be6ff19ca291817da76da65c2f6d81d654b5185dd86b8acf");
     }
 
     #[test]
