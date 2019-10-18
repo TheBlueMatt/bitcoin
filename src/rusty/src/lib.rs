@@ -3,6 +3,10 @@
 // that don't do anything but annoy us and cant actually ever be resolved.
 #[allow(bare_trait_objects)]
 
+extern crate mio;
+extern crate bitcoin;
+extern crate bitcoin_hashes;
+
 mod bridge;
 use bridge::*;
 mod dns_headers;
