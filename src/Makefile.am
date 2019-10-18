@@ -360,6 +360,10 @@ libbitcoin_wallet_tool_a_SOURCES = \
   wallet/wallettool.cpp \
   $(BITCOIN_CORE_H)
 
+# rustc only reqires the main .rs file as input, but rustc must also be invoked
+# if any of the other files change. List the main file first, then targets can
+# depend on $(LIBBITCOIN_RUSTY_SRCS), but only build the first source file ($<).
+
 LIBBITCOIN_RUSTY_SRCS= \
   rusty/src/lib.rs
 
@@ -370,7 +374,7 @@ LIBBITCOIN_RUSTY_SRCS= \
 # panics in the Rust threads and simply close the thread, instead of bringing
 # down the rest of Bitcoin Core.
 $(LIBBITCOIN_RUSTY): $(LIBBITCOIN_RUSTY_SRCS)
-	$(RUSTC) --crate-name rusty $^ --crate-type=staticlib --emit=link -g -O -C overflow-checks=on -C panic=unwind --out-dir $(@D)
+	$(RUSTC) --crate-name rusty $< --crate-type=staticlib --emit=link -g -O -C overflow-checks=on -C panic=unwind --out-dir $(@D)
 	touch $@
 
 # crypto primitives library
@@ -669,25 +673,17 @@ CTAES_DIST += crypto/ctaes/ctaes.h
 CTAES_DIST += crypto/ctaes/README.md
 CTAES_DIST += crypto/ctaes/test.c
 
-RUSTY_DIST =
-RUSTY_DIST += $(LIBBITCOIN_RUSTY_SRCS)
-
 BITCOIN_CORE_H += rusty/src/rust_bridge.h
 
 if ENABLE_RUSTY
 LIBBITCOIN_RUST_LIBS += $(LIBBITCOIN_RUSTY)
 
-$(LIBBITCOIN_RUSTY_SRCS): $(RUSTY_DIST)
-	touch $@
-
 RUSTY_CHECK=rusty-check
 $(RUSTY_CHECK): $(LIBBITCOIN_RUSTY_SRCS)
-	$(RUSTC) --crate-name rusty_test $^ --test -C debuginfo=2 -C overflow-checks=on --out-dir $(@D) && $(@D)/rusty_test
+	$(RUSTC) --crate-name rusty_test $< --test -C debuginfo=2 -C overflow-checks=on --out-dir $(@D) && $(@D)/rusty_test
 
 CLEANFILES += $(LIBBITCOIN_RUSTY)
-
 endif
-
 CLEANFILES += $(EXTRA_LIBRARIES)
 
 CLEANFILES += *.gcda *.gcno
@@ -704,7 +700,7 @@ CLEANFILES += wallet/test/*.gcda wallet/test/*.gcno
 CLEANFILES += zmq/*.gcda zmq/*.gcno
 CLEANFILES += obj/build.h
 
-EXTRA_DIST = $(CTAES_DIST) $(RUSTY_DIST)
+EXTRA_DIST = $(CTAES_DIST) $(LIBBITCOIN_RUSTY_SRCS)
 
 
 config/bitcoin-config.h: config/stamp-h1
@@ -717,7 +713,6 @@ $(top_srcdir)/$(subdir)/config/bitcoin-config.h.in:  $(am__configure_deps)
 clean-local:
 	-$(MAKE) -C secp256k1 clean
 	-$(MAKE) -C univalue clean
-	-rm -rf rusty/$(RUST_TARGET)
 	-rm -rf rusty_test rusty_test.dSYM
 	-rm -f leveldb/*/*.gcda leveldb/*/*.gcno leveldb/helpers/memenv/*.gcda leveldb/helpers/memenv/*.gcno
 	-rm -f config.h
