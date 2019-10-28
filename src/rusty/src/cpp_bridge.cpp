@@ -1,4 +1,5 @@
 #include <chainparams.h>
+#include <net.h>
 #include <validation.h>
 #include <shutdown.h>
 #include <serialize.h>
@@ -239,6 +240,25 @@ void rusty_LogLine(const unsigned char* str, bool debug) {
     } else {
         LogPrintf("%s\n", str);
     }
+}
+
+void rusty_AddOutboundP2PNonce(uint64_t nonce) {
+    if (g_connman) {
+        g_connman->AddOutboundNonce(nonce);
+    }
+}
+
+void rusty_DropOutboundP2PNonce(uint64_t nonce) {
+    if (g_connman) {
+        g_connman->DropOutboundNonce(nonce);
+    }
+}
+
+bool rusty_CheckInboundP2PNonce(uint64_t nonce) {
+    if (g_connman) {
+        return g_connman->CheckIncomingNonce(nonce);
+    }
+    return false;
 }
 
 }

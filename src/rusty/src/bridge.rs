@@ -359,3 +359,41 @@ impl Drop for RandomContext {
         unsafe { rusty_FreeRandContext(self.index) }
     }
 }
+
+extern "C" {
+    // P2P-specific utilities.
+
+    /// Begins tracking the given nonce to reject any incoming connections with the same
+    /// in their VERSION message, preventing us from connecting to ourselves.
+    /// nonce must be random, and you MUST call rusty_DropOutboundP2PNonce afterwards.
+    fn rusty_AddOutboundP2PNonce(nonce: u64);
+
+    /// Stops tracking the given connection nonce, provided to rusty_AddOutboundP2PNonce.
+    fn rusty_DropOutboundP2PNonce(nonce: u64);
+
+    /// Returns true if the given nonce has been used on any of our outbound connections
+    /// (including those made by the C++ P2P client and those added via
+    /// rusty_AddOutboundP2PNonce).
+    fn rusty_CheckInboundP2PNonce(nonce: u64) -> bool;
+}
+
+pub struct OutboundP2PNonce {
+    nonce: u64,
+}
+impl OutboundP2PNonce {
+    pub fn new(rand_ctx: &mut RandomContext) -> Self {
+        let nonce = rand_ctx.get_rand_u64();
+        unsafe { rusty_AddOutboundP2PNonce(nonce) }
+        Self { nonce }
+    }
+    pub fn nonce(&self) -> u64 { self.nonce }
+}
+impl Drop for OutboundP2PNonce  {
+    fn drop(&mut self) {
+        unsafe { rusty_DropOutboundP2PNonce(self.nonce) }
+    }
+}
+
+pub fn should_disconnect_by_inbound_nonce(nonce: u64) -> bool {
+    unsafe { rusty_CheckInboundP2PNonce(nonce) }
+}
