@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 // returns Results instead of raw pointers, or redefining the GlobalAlloc API to allow
 // panic!()s inside of alloc calls), we should switch to those, however these APIs are
 // currently unstable.
-const TOTAL_MEM_LIMIT_BYTES: usize = 128 * 1024 * 1024;
+pub const TOTAL_MEM_LIMIT_BYTES: usize = 256 * 1024 * 1024;
 static TOTAL_MEM_ALLOCD: AtomicUsize = AtomicUsize::new(0);
 struct MemoryLimitingAllocator;
 unsafe impl GlobalAlloc for MemoryLimitingAllocator {
