@@ -200,6 +200,10 @@ impl BlockProviderState {
     }
 }
 
+pub fn gather_event_entropy(_data: &[u8]) {
+    unimplemented!();
+}
+
 pub fn log_line(_line: &str, _debug: bool) {
     unimplemented!();
 }
@@ -235,5 +239,9 @@ impl OutboundP2PNonce {
 }
 
 pub fn should_disconnect_by_inbound_nonce(_connman: Connman, _nonce: u64) -> bool {
+    unimplemented!();
+}
+
+pub fn accept_to_memory_pool(_data: &[u8]) {
     unimplemented!();
 }

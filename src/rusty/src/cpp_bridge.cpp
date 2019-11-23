@@ -5,6 +5,7 @@
 #include <shutdown.h>
 #include <serialize.h>
 #include <consensus/validation.h>
+#include <random.h>
 #include <logging.h>
 
 /** A class that deserializes a single thing one time. */
@@ -258,6 +259,10 @@ uint64_t rusty_GetRandRange(void* contextvoid, uint64_t range) {
     return ctx->randrange(range);
 }
 
+void rusty_GatherEntropyFromEvent(const uint32_t event_info) {
+    RandAddEvent(event_info);
+}
+
 void rusty_LogLine(const unsigned char* str, bool debug) {
     if (debug) {
         LogPrint(BCLog::RUST, "%s\n", str);
@@ -286,6 +291,16 @@ bool rusty_CheckInboundP2PNonce(void* pconnmanvoid, uint64_t nonce) {
         return g_rusty_connman->CheckIncomingNonce(nonce);
     }
     return false;
+}
+
+void rusty_AcceptToMemoryPool(const unsigned char* txdata, size_t txdatalen) {
+    CTransactionRef tx;
+    try {
+        InputStream(SER_NETWORK, PROTOCOL_VERSION, txdata, txdatalen) >> tx;
+    } catch (...) {}
+    LOCK(cs_main);
+    TxValidationState state_dummy;
+    AcceptToMemoryPool(::mempool, state_dummy, tx, nullptr, false, 0);
 }
 
 }

@@ -351,8 +351,17 @@ impl Drop for BlockProviderState {
 extern "C" {
     // General utilities. Wrapped in safe wrappers below.
 
+    /// Provide some bytes of random(-ish) data for use in Bitcoin Core's RNG
+    fn rusty_GatherEntropyFromEvent(event_info: u32);
+
     /// Log some string
     fn rusty_LogLine(string: *const u8, debug: bool);
+}
+
+/// Gathers entropy from the current timestamp. Data should be a reasonably short (few bytes)
+/// description of the event that occurred.
+pub fn gather_event_entropy(event_info: u32) {
+    unsafe { rusty_GatherEntropyFromEvent(event_info); }
 }
 
 pub fn log_line(line: &str, debug: bool) {
@@ -449,4 +458,15 @@ impl Drop for OutboundP2PNonce  {
 
 pub fn should_disconnect_by_inbound_nonce(connman: Connman, nonce: u64) -> bool {
     ! unsafe { rusty_CheckInboundP2PNonce(connman.0, nonce) }
+}
+
+extern "C" {
+    // Utilities related to transactions. Wrapped in safe wrappers below.
+
+    /// Attempt to add a transaction to the memory pool
+    fn rusty_AcceptToMemoryPool(txdata: *const u8, txdatalen: usize);
+}
+
+pub fn accept_to_memory_pool(data: &[u8]) {
+    unsafe { rusty_AcceptToMemoryPool(data.as_ptr(), data.len()); }
 }
