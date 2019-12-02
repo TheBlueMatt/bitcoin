@@ -151,7 +151,7 @@ static bool rest_headers(HTTPRequest* req,
 
     long count = strtol(path[0].c_str(), nullptr, 10);
     if (count < 1 || count > 2000)
-        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of range: " + path[0]);
+        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of acceptable range (1-2000): " + path[0]);
 
     std::string hashStr = path[1];
     uint256 hash;
@@ -208,7 +208,7 @@ static bool rest_headers(HTTPRequest* req,
         return true;
     }
     default: {
-        return RESTERR(req, HTTP_NOT_FOUND, "output format not found (available: .bin, .hex, .json)");
+        return RESTERR(req, HTTP_NOT_FOUND, "output format not found (available: " + AvailableDataFormatsString() + ")");
     }
     }
 }
@@ -317,7 +317,7 @@ static bool rest_filter_header(HTTPRequest* req, const std::string& strURIPart)
 
     long count = strtol(uriParts[1].c_str(), nullptr, 10);
     if (count < 1 || count > 2000) {
-        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of range: " + uriParts[1]);
+        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of acceptable range (1-2000): " + uriParts[1]);
     }
 
     std::vector<const CBlockIndex *> headers;
@@ -389,7 +389,7 @@ static bool rest_filter_header(HTTPRequest* req, const std::string& strURIPart)
         return true;
     }
     default: {
-        return RESTERR(req, HTTP_NOT_FOUND, "output format not found (available: .bin, .hex)");
+        return RESTERR(req, HTTP_NOT_FOUND, "output format not found (available: " + AvailableDataFormatsString() + ")");
     }
     }
 
