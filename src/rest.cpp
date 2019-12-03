@@ -29,6 +29,7 @@
 #include <univalue.h>
 
 static const size_t MAX_GETUTXOS_OUTPOINTS = 15; //allow a max of 15 outpoints to be queried at once
+static const unsigned int MAX_HEADERS_RESULTS = 2000;
 
 enum class RetFormat {
     UNDEF,
@@ -150,8 +151,8 @@ static bool rest_headers(HTTPRequest* req,
         return RESTERR(req, HTTP_BAD_REQUEST, "No header count specified. Use /rest/headers/<count>/<hash>.<ext>.");
 
     long count = strtol(path[0].c_str(), nullptr, 10);
-    if (count < 1 || count > 2000)
-        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of acceptable range (1-2000): " + path[0]);
+    if (count < 1 || count > MAX_HEADERS_RESULTS)
+        return RESTERR(req, HTTP_BAD_REQUEST, strprintf("Header count out of acceptable range (1-%u): %s",  MAX_HEADERS_RESULTS, path[0]));
 
     std::string hashStr = path[1];
     uint256 hash;
@@ -316,8 +317,8 @@ static bool rest_filter_header(HTTPRequest* req, const std::string& strURIPart)
     }
 
     long count = strtol(uriParts[1].c_str(), nullptr, 10);
-    if (count < 1 || count > 2000) {
-        return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of acceptable range (1-2000): " + uriParts[1]);
+    if (count < 1 || count > MAX_HEADERS_RESULTS) {
+        return RESTERR(req, HTTP_BAD_REQUEST, strprintf("Header count out of acceptable range (1-%u): %s",  MAX_HEADERS_RESULTS, uriParts[1]));
     }
 
     std::vector<const CBlockIndex *> headers;
