@@ -2,16 +2,13 @@ Contents
 ========
 This directory contains tools for developers working on this repository.
 
-check-doc.py
-============
-
-Check if all command line args are documented. The return value indicates the
-number of undocumented args.
-
 clang-format-diff.py
 ===================
 
 A script to format unified git diffs according to [.clang-format](../../src/.clang-format).
+
+Requires `clang-format`, installed e.g. via `brew install clang-format` on macOS,
+or `sudo apt install clang-format` on Debian/Ubuntu.
 
 For instance, to format the last commit with 0 lines of context,
 the script should be called from the git root folder as follows.
@@ -93,104 +90,42 @@ example:
 BUILDDIR=$PWD/build contrib/devtools/gen-manpages.sh
 ```
 
-git-subtree-check.sh
-====================
-
-Run this script from the root of the repository to verify that a subtree matches the contents of
-the commit it claims to have been updated to.
-
-To use, make sure that you have fetched the upstream repository branch in which the subtree is
-maintained:
-* for `src/secp256k1`: https://github.com/bitcoin-core/secp256k1.git (branch master)
-* for `src/leveldb`: https://github.com/bitcoin-core/leveldb.git (branch bitcoin-fork)
-* for `src/univalue`: https://github.com/bitcoin-core/univalue.git (branch master)
-* for `src/crypto/ctaes`: https://github.com/bitcoin-core/ctaes.git (branch master)
-
-Usage: `git-subtree-check.sh DIR (COMMIT)`
-
-`COMMIT` may be omitted, in which case `HEAD` is used.
-
-github-merge.py
-===============
-
-A small script to automate merging pull-requests securely and sign them with GPG.
-
-For example:
-
-  ./github-merge.py 3077
-
-(in any git repository) will help you merge pull request #3077 for the
-bitcoin/bitcoin repository.
-
-What it does:
-* Fetch master and the pull request.
-* Locally construct a merge commit.
-* Show the diff that merge results in.
-* Ask you to verify the resulting source tree (so you can do a make
-check or whatever).
-* Ask you whether to GPG sign the merge commit.
-* Ask you whether to push the result upstream.
-
-This means that there are no potential race conditions (where a
-pullreq gets updated while you're reviewing it, but before you click
-merge), and when using GPG signatures, that even a compromised GitHub
-couldn't mess with the sources.
-
-Setup
----------
-Configuring the github-merge tool for the bitcoin repository is done in the following way:
-
-    git config githubmerge.repository bitcoin/bitcoin
-    git config githubmerge.testcmd "make -j4 check" (adapt to whatever you want to use for testing)
-    git config --global user.signingkey mykeyid (if you want to GPG sign)
-
-Create and verify timestamps of merge commits
----------------------------------------------
-To create or verify timestamps on the merge commits, install the OpenTimestamps
-client via `pip3 install opentimestamps-client`. Then, dowload the gpg wrapper
-`ots-git-gpg-wrapper.sh` and set it as git's `gpg.program`. See
-[the ots git integration documentation](https://github.com/opentimestamps/opentimestamps-client/blob/master/doc/git-integration.md#usage)
-for further details.
-
-optimize-pngs.py
-================
-
-A script to optimize png files in the bitcoin
-repository (requires pngcrush).
-
 security-check.py and test-security-check.py
 ============================================
 
-Perform basic ELF security checks on a series of executables.
+Perform basic security checks on a series of executables.
 
 symbol-check.py
 ===============
 
-A script to check that the (Linux) executables produced by gitian only contain
-allowed gcc, glibc and libstdc++ version symbols. This makes sure they are
-still compatible with the minimum supported Linux distribution versions.
+A script to check that the executables produced by gitian only contain
+certain symbols and are only linked against allowed libraries.
+
+For Linux this means checking for allowed gcc, glibc and libstdc++ version symbols.
+This makes sure they are still compatible with the minimum supported distribution versions.
+
+For macOS and Windows we check that the executables are only linked against libraries we allow.
 
 Example usage after a gitian build:
 
-    find ../gitian-builder/build -type f -executable | xargs python contrib/devtools/symbol-check.py 
+    find ../gitian-builder/build -type f -executable | xargs python3 contrib/devtools/symbol-check.py
 
-If only supported symbols are used the return value will be 0 and the output will be empty.
+If no errors occur the return value will be 0 and the output will be empty.
 
-If there are 'unsupported' symbols, the return value will be 1 a list like this will be printed:
+If there are any errors the return value will be 1 and output like this will be printed:
 
     .../64/test_bitcoin: symbol memcpy from unsupported version GLIBC_2.14
     .../64/test_bitcoin: symbol __fdelt_chk from unsupported version GLIBC_2.15
     .../64/test_bitcoin: symbol std::out_of_range::~out_of_range() from unsupported version GLIBCXX_3.4.15
     .../64/test_bitcoin: symbol _ZNSt8__detail15_List_nod from unsupported version GLIBCXX_3.4.15
 
-update-translations.py
-======================
+circular-dependencies.py
+========================
 
-Run this script from the root of the repository to update all translations from transifex.
-It will do the following automatically:
+Run this script from the root of the source tree (`src/`) to find circular dependencies in the source code.
+This looks only at which files include other files, treating the `.cpp` and `.h` file as one unit.
 
-- fetch all translations
-- post-process them into valid and committable format
-- add missing translations to the build system (TODO)
+Example usage:
 
-See doc/translation-process.md for more information.
+    cd .../src
+    ../contrib/devtools/circular-dependencies.py {*,*/*,*/*/*}.{h,cpp}

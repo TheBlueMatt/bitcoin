@@ -1,14 +1,18 @@
-// Copyright (c) 2017 The Bitcoin Core developers
+// Copyright (c) 2017-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/coinselection.h>
-#include <util.h>
-#include <utilmoneystr.h>
+
+#include <policy/feerate.h>
+#include <util/system.h>
+#include <util/moneystr.h>
+
+#include <optional>
 
 // Descending order comparator
 struct {
-    bool operator()(const CInputCoin& a, const CInputCoin& b) const
+    bool operator()(const OutputGroup& a, const OutputGroup& b) const
     {
         return a.effective_value > b.effective_value;
     }
@@ -59,7 +63,7 @@ struct {
 
 static const size_t TOTAL_TRIES = 100000;
 
-bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_value, const CAmount& cost_of_change, std::set<CInputCoin>& out_set, CAmount& value_ret, CAmount not_input_fees)
+bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_value, const CAmount& cost_of_change, std::set<CInputCoin>& out_set, CAmount& value_ret, CAmount not_input_fees)
 {
     out_set.clear();
     CAmount curr_value = 0;
@@ -70,7 +74,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
 
     // Calculate curr_available_value
     CAmount curr_available_value = 0;
-    for (const CInputCoin& utxo : utxo_pool) {
+    for (const OutputGroup& utxo : utxo_pool) {
         // Assert that this utxo is not negative. It should never be negative, effective value calculation should have removed it
         assert(utxo.effective_value > 0);
         curr_available_value += utxo.effective_value;
@@ -104,6 +108,9 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
                 best_selection = curr_selection;
                 best_selection.resize(utxo_pool.size());
                 best_waste = curr_waste;
+                if (best_waste == 0) {
+                    break;
+                }
             }
             curr_waste -= (curr_value - actual_target); // Remove the excess value as we will be selecting different coins now
             backtrack = true;
@@ -115,7 +122,7 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
             while (!curr_selection.empty() && !curr_selection.back()) {
                 curr_selection.pop_back();
                 curr_available_value += utxo_pool.at(curr_selection.size()).effective_value;
-            };
+            }
 
             if (curr_selection.empty()) { // We have walked back to the first utxo and no branch is untraversed. All solutions searched
                 break;
@@ -123,11 +130,11 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
 
             // Output was included on previous iterations, try excluding now.
             curr_selection.back() = false;
-            CInputCoin& utxo = utxo_pool.at(curr_selection.size() - 1);
+            OutputGroup& utxo = utxo_pool.at(curr_selection.size() - 1);
             curr_value -= utxo.effective_value;
             curr_waste -= utxo.fee - utxo.long_term_fee;
         } else { // Moving forwards, continuing down this branch
-            CInputCoin& utxo = utxo_pool.at(curr_selection.size());
+            OutputGroup& utxo = utxo_pool.at(curr_selection.size());
 
             // Remove this utxo from the curr_available_value utxo amount
             curr_available_value -= utxo.effective_value;
@@ -156,32 +163,32 @@ bool SelectCoinsBnB(std::vector<CInputCoin>& utxo_pool, const CAmount& target_va
     value_ret = 0;
     for (size_t i = 0; i < best_selection.size(); ++i) {
         if (best_selection.at(i)) {
-            out_set.insert(utxo_pool.at(i));
-            value_ret += utxo_pool.at(i).txout.nValue;
+            util::insert(out_set, utxo_pool.at(i).m_outputs);
+            value_ret += utxo_pool.at(i).m_value;
         }
     }
 
     return true;
 }
 
-static void ApproximateBestSubset(const std::vector<CInputCoin>& vValue, const CAmount& nTotalLower, const CAmount& nTargetValue,
+static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const CAmount& nTotalLower, const CAmount& nTargetValue,
                                   std::vector<char>& vfBest, CAmount& nBest, int iterations = 1000)
 {
     std::vector<char> vfIncluded;
 
-    vfBest.assign(vValue.size(), true);
+    vfBest.assign(groups.size(), true);
     nBest = nTotalLower;
 
     FastRandomContext insecure_rand;
 
     for (int nRep = 0; nRep < iterations && nBest != nTargetValue; nRep++)
     {
-        vfIncluded.assign(vValue.size(), false);
+        vfIncluded.assign(groups.size(), false);
         CAmount nTotal = 0;
         bool fReachedTarget = false;
         for (int nPass = 0; nPass < 2 && !fReachedTarget; nPass++)
         {
-            for (unsigned int i = 0; i < vValue.size(); i++)
+            for (unsigned int i = 0; i < groups.size(); i++)
             {
                 //The solver here uses a randomized algorithm,
                 //the randomness serves no real security purpose but is just
@@ -191,7 +198,7 @@ static void ApproximateBestSubset(const std::vector<CInputCoin>& vValue, const C
                 //the selection random.
                 if (nPass == 0 ? insecure_rand.randbool() : !vfIncluded[i])
                 {
-                    nTotal += vValue[i].txout.nValue;
+                    nTotal += groups[i].m_value;
                     vfIncluded[i] = true;
                     if (nTotal >= nTargetValue)
                     {
@@ -201,7 +208,7 @@ static void ApproximateBestSubset(const std::vector<CInputCoin>& vValue, const C
                             nBest = nTotal;
                             vfBest = vfIncluded;
                         }
-                        nTotal -= vValue[i].txout.nValue;
+                        nTotal -= groups[i].m_value;
                         vfIncluded[i] = false;
                     }
                 }
@@ -210,86 +217,75 @@ static void ApproximateBestSubset(const std::vector<CInputCoin>& vValue, const C
     }
 }
 
-bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet)
+bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet)
 {
     setCoinsRet.clear();
     nValueRet = 0;
 
     // List of values less than target
-    boost::optional<CInputCoin> coinLowestLarger;
-    std::vector<CInputCoin> vValue;
+    std::optional<OutputGroup> lowest_larger;
+    std::vector<OutputGroup> applicable_groups;
     CAmount nTotalLower = 0;
 
-    random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
+    Shuffle(groups.begin(), groups.end(), FastRandomContext());
 
-    for (const CInputCoin &coin : vCoins)
-    {
-        if (coin.txout.nValue == nTargetValue)
-        {
-            setCoinsRet.insert(coin);
-            nValueRet += coin.txout.nValue;
+    for (const OutputGroup& group : groups) {
+        if (group.m_value == nTargetValue) {
+            util::insert(setCoinsRet, group.m_outputs);
+            nValueRet += group.m_value;
             return true;
-        }
-        else if (coin.txout.nValue < nTargetValue + MIN_CHANGE)
-        {
-            vValue.push_back(coin);
-            nTotalLower += coin.txout.nValue;
-        }
-        else if (!coinLowestLarger || coin.txout.nValue < coinLowestLarger->txout.nValue)
-        {
-            coinLowestLarger = coin;
+        } else if (group.m_value < nTargetValue + MIN_CHANGE) {
+            applicable_groups.push_back(group);
+            nTotalLower += group.m_value;
+        } else if (!lowest_larger || group.m_value < lowest_larger->m_value) {
+            lowest_larger = group;
         }
     }
 
-    if (nTotalLower == nTargetValue)
-    {
-        for (const auto& input : vValue)
-        {
-            setCoinsRet.insert(input);
-            nValueRet += input.txout.nValue;
+    if (nTotalLower == nTargetValue) {
+        for (const auto& group : applicable_groups) {
+            util::insert(setCoinsRet, group.m_outputs);
+            nValueRet += group.m_value;
         }
         return true;
     }
 
-    if (nTotalLower < nTargetValue)
-    {
-        if (!coinLowestLarger)
-            return false;
-        setCoinsRet.insert(coinLowestLarger.get());
-        nValueRet += coinLowestLarger->txout.nValue;
+    if (nTotalLower < nTargetValue) {
+        if (!lowest_larger) return false;
+        util::insert(setCoinsRet, lowest_larger->m_outputs);
+        nValueRet += lowest_larger->m_value;
         return true;
     }
 
     // Solve subset sum by stochastic approximation
-    std::sort(vValue.begin(), vValue.end(), descending);
+    std::sort(applicable_groups.begin(), applicable_groups.end(), descending);
     std::vector<char> vfBest;
     CAmount nBest;
 
-    ApproximateBestSubset(vValue, nTotalLower, nTargetValue, vfBest, nBest);
-    if (nBest != nTargetValue && nTotalLower >= nTargetValue + MIN_CHANGE)
-        ApproximateBestSubset(vValue, nTotalLower, nTargetValue + MIN_CHANGE, vfBest, nBest);
+    ApproximateBestSubset(applicable_groups, nTotalLower, nTargetValue, vfBest, nBest);
+    if (nBest != nTargetValue && nTotalLower >= nTargetValue + MIN_CHANGE) {
+        ApproximateBestSubset(applicable_groups, nTotalLower, nTargetValue + MIN_CHANGE, vfBest, nBest);
+    }
 
     // If we have a bigger coin and (either the stochastic approximation didn't find a good solution,
     //                                   or the next bigger coin is closer), return the bigger coin
-    if (coinLowestLarger &&
-        ((nBest != nTargetValue && nBest < nTargetValue + MIN_CHANGE) || coinLowestLarger->txout.nValue <= nBest))
-    {
-        setCoinsRet.insert(coinLowestLarger.get());
-        nValueRet += coinLowestLarger->txout.nValue;
-    }
-    else {
-        for (unsigned int i = 0; i < vValue.size(); i++)
-            if (vfBest[i])
-            {
-                setCoinsRet.insert(vValue[i]);
-                nValueRet += vValue[i].txout.nValue;
+    if (lowest_larger &&
+        ((nBest != nTargetValue && nBest < nTargetValue + MIN_CHANGE) || lowest_larger->m_value <= nBest)) {
+        util::insert(setCoinsRet, lowest_larger->m_outputs);
+        nValueRet += lowest_larger->m_value;
+    } else {
+        for (unsigned int i = 0; i < applicable_groups.size(); i++) {
+            if (vfBest[i]) {
+                util::insert(setCoinsRet, applicable_groups[i].m_outputs);
+                nValueRet += applicable_groups[i].m_value;
             }
+        }
 
         if (LogAcceptCategory(BCLog::SELECTCOINS)) {
-            LogPrint(BCLog::SELECTCOINS, "SelectCoins() best subset: ");
-            for (unsigned int i = 0; i < vValue.size(); i++) {
+            LogPrint(BCLog::SELECTCOINS, "SelectCoins() best subset: "); /* Continued */
+            for (unsigned int i = 0; i < applicable_groups.size(); i++) {
                 if (vfBest[i]) {
-                    LogPrint(BCLog::SELECTCOINS, "%s ", FormatMoney(vValue[i].txout.nValue));
+                    LogPrint(BCLog::SELECTCOINS, "%s ", FormatMoney(applicable_groups[i].m_value)); /* Continued */
                 }
             }
             LogPrint(BCLog::SELECTCOINS, "total %s\n", FormatMoney(nBest));
@@ -297,4 +293,49 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<CInputCoin>& vCoins
     }
 
     return true;
+}
+
+/******************************************************************************
+
+ OutputGroup
+
+ ******************************************************************************/
+
+void OutputGroup::Insert(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants, bool positive_only) {
+    // Compute the effective value first
+    const CAmount coin_fee = output.m_input_bytes < 0 ? 0 : m_effective_feerate.GetFee(output.m_input_bytes);
+    const CAmount ev = output.txout.nValue - coin_fee;
+
+    // Filter for positive only here before adding the coin
+    if (positive_only && ev <= 0) return;
+
+    m_outputs.push_back(output);
+    CInputCoin& coin = m_outputs.back();
+
+    coin.m_fee = coin_fee;
+    fee += coin.m_fee;
+
+    coin.m_long_term_fee = coin.m_input_bytes < 0 ? 0 : m_long_term_feerate.GetFee(coin.m_input_bytes);
+    long_term_fee += coin.m_long_term_fee;
+
+    coin.effective_value = ev;
+    effective_value += coin.effective_value;
+
+    m_from_me &= from_me;
+    m_value += output.txout.nValue;
+    m_depth = std::min(m_depth, depth);
+    // ancestors here express the number of ancestors the new coin will end up having, which is
+    // the sum, rather than the max; this will overestimate in the cases where multiple inputs
+    // have common ancestors
+    m_ancestors += ancestors;
+    // descendants is the count as seen from the top ancestor, not the descendants as seen from the
+    // coin itself; thus, this value is counted as the max, not the sum
+    m_descendants = std::max(m_descendants, descendants);
+}
+
+bool OutputGroup::EligibleForSpending(const CoinEligibilityFilter& eligibility_filter) const
+{
+    return m_depth >= (m_from_me ? eligibility_filter.conf_mine : eligibility_filter.conf_theirs)
+        && m_ancestors <= eligibility_filter.max_ancestors
+        && m_descendants <= eligibility_filter.max_descendants;
 }

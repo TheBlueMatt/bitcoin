@@ -1,11 +1,12 @@
-// Copyright (c) 2012-2017 The Bitcoin Core developers
+// Copyright (c) 2012-2020 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <hash.h>
 #include <serialize.h>
 #include <streams.h>
-#include <hash.h>
-#include <test/test_bitcoin.h>
+#include <test/util/setup_common.h>
+#include <util/strencodings.h>
 
 #include <stdint.h>
 
@@ -23,20 +24,18 @@ protected:
     CTransactionRef txval;
 public:
     CSerializeMethodsTestSingle() = default;
-    CSerializeMethodsTestSingle(int intvalin, bool boolvalin, std::string stringvalin, const char* charstrvalin, CTransaction txvalin) : intval(intvalin), boolval(boolvalin), stringval(std::move(stringvalin)), txval(MakeTransactionRef(txvalin))
+    CSerializeMethodsTestSingle(int intvalin, bool boolvalin, std::string stringvalin, const char* charstrvalin, const CTransactionRef& txvalin) : intval(intvalin), boolval(boolvalin), stringval(std::move(stringvalin)), txval(txvalin)
     {
         memcpy(charstrval, charstrvalin, sizeof(charstrval));
     }
 
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(intval);
-        READWRITE(boolval);
-        READWRITE(stringval);
-        READWRITE(charstrval);
-        READWRITE(txval);
+    SERIALIZE_METHODS(CSerializeMethodsTestSingle, obj)
+    {
+        READWRITE(obj.intval);
+        READWRITE(obj.boolval);
+        READWRITE(obj.stringval);
+        READWRITE(obj.charstrval);
+        READWRITE(obj.txval);
     }
 
     bool operator==(const CSerializeMethodsTestSingle& rhs)
@@ -53,11 +52,10 @@ class CSerializeMethodsTestMany : public CSerializeMethodsTestSingle
 {
 public:
     using CSerializeMethodsTestSingle::CSerializeMethodsTestSingle;
-    ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(intval, boolval, stringval, charstrval, txval);
+    SERIALIZE_METHODS(CSerializeMethodsTestMany, obj)
+    {
+        READWRITE(obj.intval, obj.boolval, obj.stringval, obj.charstrval, obj.txval);
     }
 };
 
@@ -147,7 +145,7 @@ BOOST_AUTO_TEST_CASE(floats)
     for (int i = 0; i < 1000; i++) {
         ss << float(i);
     }
-    BOOST_CHECK(Hash(ss.begin(), ss.end()) == uint256S("8e8b4cf3e4df8b332057e3e23af42ebc663b61e0495d5e7e32d85099d7f3fe0c"));
+    BOOST_CHECK(Hash(ss) == uint256S("8e8b4cf3e4df8b332057e3e23af42ebc663b61e0495d5e7e32d85099d7f3fe0c"));
 
     // decode
     for (int i = 0; i < 1000; i++) {
@@ -164,7 +162,7 @@ BOOST_AUTO_TEST_CASE(doubles)
     for (int i = 0; i < 1000; i++) {
         ss << double(i);
     }
-    BOOST_CHECK(Hash(ss.begin(), ss.end()) == uint256S("43d0c82591953c4eafe114590d392676a01585d25b25d433557f0d7878b23f96"));
+    BOOST_CHECK(Hash(ss) == uint256S("43d0c82591953c4eafe114590d392676a01585d25b25d433557f0d7878b23f96"));
 
     // decode
     for (int i = 0; i < 1000; i++) {
@@ -181,26 +179,26 @@ BOOST_AUTO_TEST_CASE(varints)
     CDataStream ss(SER_DISK, 0);
     CDataStream::size_type size = 0;
     for (int i = 0; i < 100000; i++) {
-        ss << VARINT(i, VarIntMode::NONNEGATIVE_SIGNED);
-        size += ::GetSerializeSize(VARINT(i, VarIntMode::NONNEGATIVE_SIGNED), 0, 0);
+        ss << VARINT_MODE(i, VarIntMode::NONNEGATIVE_SIGNED);
+        size += ::GetSerializeSize(VARINT_MODE(i, VarIntMode::NONNEGATIVE_SIGNED), 0);
         BOOST_CHECK(size == ss.size());
     }
 
     for (uint64_t i = 0;  i < 100000000000ULL; i += 999999937) {
         ss << VARINT(i);
-        size += ::GetSerializeSize(VARINT(i), 0, 0);
+        size += ::GetSerializeSize(VARINT(i), 0);
         BOOST_CHECK(size == ss.size());
     }
 
     // decode
     for (int i = 0; i < 100000; i++) {
         int j = -1;
-        ss >> VARINT(j, VarIntMode::NONNEGATIVE_SIGNED);
+        ss >> VARINT_MODE(j, VarIntMode::NONNEGATIVE_SIGNED);
         BOOST_CHECK_MESSAGE(i == j, "decoded:" << j << " expected:" << i);
     }
 
     for (uint64_t i = 0;  i < 100000000000ULL; i += 999999937) {
-        uint64_t j = -1;
+        uint64_t j = std::numeric_limits<uint64_t>::max();
         ss >> VARINT(j);
         BOOST_CHECK_MESSAGE(i == j, "decoded:" << j << " expected:" << i);
     }
@@ -209,21 +207,21 @@ BOOST_AUTO_TEST_CASE(varints)
 BOOST_AUTO_TEST_CASE(varints_bitpatterns)
 {
     CDataStream ss(SER_DISK, 0);
-    ss << VARINT(0, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "00"); ss.clear();
-    ss << VARINT(0x7f, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "7f"); ss.clear();
-    ss << VARINT((int8_t)0x7f, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "7f"); ss.clear();
-    ss << VARINT(0x80, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "8000"); ss.clear();
+    ss << VARINT_MODE(0, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "00"); ss.clear();
+    ss << VARINT_MODE(0x7f, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "7f"); ss.clear();
+    ss << VARINT_MODE((int8_t)0x7f, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "7f"); ss.clear();
+    ss << VARINT_MODE(0x80, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "8000"); ss.clear();
     ss << VARINT((uint8_t)0x80); BOOST_CHECK_EQUAL(HexStr(ss), "8000"); ss.clear();
-    ss << VARINT(0x1234, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "a334"); ss.clear();
-    ss << VARINT((int16_t)0x1234, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "a334"); ss.clear();
-    ss << VARINT(0xffff, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "82fe7f"); ss.clear();
+    ss << VARINT_MODE(0x1234, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "a334"); ss.clear();
+    ss << VARINT_MODE((int16_t)0x1234, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "a334"); ss.clear();
+    ss << VARINT_MODE(0xffff, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "82fe7f"); ss.clear();
     ss << VARINT((uint16_t)0xffff); BOOST_CHECK_EQUAL(HexStr(ss), "82fe7f"); ss.clear();
-    ss << VARINT(0x123456, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "c7e756"); ss.clear();
-    ss << VARINT((int32_t)0x123456, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "c7e756"); ss.clear();
+    ss << VARINT_MODE(0x123456, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "c7e756"); ss.clear();
+    ss << VARINT_MODE((int32_t)0x123456, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "c7e756"); ss.clear();
     ss << VARINT(0x80123456U); BOOST_CHECK_EQUAL(HexStr(ss), "86ffc7e756"); ss.clear();
     ss << VARINT((uint32_t)0x80123456U); BOOST_CHECK_EQUAL(HexStr(ss), "86ffc7e756"); ss.clear();
     ss << VARINT(0xffffffff); BOOST_CHECK_EQUAL(HexStr(ss), "8efefefe7f"); ss.clear();
-    ss << VARINT(0x7fffffffffffffffLL, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "fefefefefefefefe7f"); ss.clear();
+    ss << VARINT_MODE(0x7fffffffffffffffLL, VarIntMode::NONNEGATIVE_SIGNED); BOOST_CHECK_EQUAL(HexStr(ss), "fefefefefefefefe7f"); ss.clear();
     ss << VARINT(0xffffffffffffffffULL); BOOST_CHECK_EQUAL(HexStr(ss), "80fefefefefefefefe7f"); ss.clear();
 }
 
@@ -252,11 +250,19 @@ static bool isCanonicalException(const std::ios_base::failure& ex)
 
     // The string returned by what() can be different for different platforms.
     // Instead of directly comparing the ex.what() with an expected string,
-    // create an instance of exception to see if ex.what() matches 
-    // the expected explanatory string returned by the exception instance. 
+    // create an instance of exception to see if ex.what() matches
+    // the expected explanatory string returned by the exception instance.
     return strcmp(expectedException.what(), ex.what()) == 0;
 }
 
+BOOST_AUTO_TEST_CASE(vector_bool)
+{
+    std::vector<uint8_t> vec1{1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1};
+    std::vector<bool> vec2{1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1};
+
+    BOOST_CHECK(vec1 == std::vector<uint8_t>(vec2.begin(), vec2.end()));
+    BOOST_CHECK(SerializeHash(vec1) == SerializeHash(vec2));
+}
 
 BOOST_AUTO_TEST_CASE(noncanonical)
 {
@@ -314,7 +320,7 @@ BOOST_AUTO_TEST_CASE(insert_delete)
 
     ss.insert(ss.end(), c);
     BOOST_CHECK_EQUAL(ss.size(), 6U);
-    BOOST_CHECK_EQUAL(ss[4], (char)0xff);
+    BOOST_CHECK_EQUAL(ss[4], 0xff);
     BOOST_CHECK_EQUAL(ss[5], c);
 
     ss.insert(ss.begin()+2, c);
@@ -328,19 +334,14 @@ BOOST_AUTO_TEST_CASE(insert_delete)
 
     ss.erase(ss.begin()+ss.size()-1);
     BOOST_CHECK_EQUAL(ss.size(), 5U);
-    BOOST_CHECK_EQUAL(ss[4], (char)0xff);
+    BOOST_CHECK_EQUAL(ss[4], 0xff);
 
     ss.erase(ss.begin()+1);
     BOOST_CHECK_EQUAL(ss.size(), 4U);
     BOOST_CHECK_EQUAL(ss[0], 0);
     BOOST_CHECK_EQUAL(ss[1], 1);
     BOOST_CHECK_EQUAL(ss[2], 2);
-    BOOST_CHECK_EQUAL(ss[3], (char)0xff);
-
-    // Make sure GetAndClear does the right thing:
-    CSerializeData d;
-    ss.GetAndClear(d);
-    BOOST_CHECK_EQUAL(ss.size(), 0U);
+    BOOST_CHECK_EQUAL(ss[3], 0xff);
 }
 
 BOOST_AUTO_TEST_CASE(class_methods)
@@ -350,8 +351,9 @@ BOOST_AUTO_TEST_CASE(class_methods)
     std::string stringval("testing");
     const char charstrval[16] = "testing charstr";
     CMutableTransaction txval;
-    CSerializeMethodsTestSingle methodtest1(intval, boolval, stringval, charstrval, txval);
-    CSerializeMethodsTestMany methodtest2(intval, boolval, stringval, charstrval, txval);
+    CTransactionRef tx_ref{MakeTransactionRef(txval)};
+    CSerializeMethodsTestSingle methodtest1(intval, boolval, stringval, charstrval, tx_ref);
+    CSerializeMethodsTestMany methodtest2(intval, boolval, stringval, charstrval, tx_ref);
     CSerializeMethodsTestSingle methodtest3;
     CSerializeMethodsTestMany methodtest4;
     CDataStream ss(SER_DISK, PROTOCOL_VERSION);
